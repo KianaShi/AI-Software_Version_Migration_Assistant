@@ -1,5 +1,3 @@
-# Day 1 Notes
-
 ## What is RAG?
 
 Retrieve information first, then let LLM generate answers.
@@ -38,13 +36,76 @@ A HashMap returns a value when the key matches exactly. In contrast, a retriever
 
 This analogy is not perfectly accurate, but it helps me understand how retrieval works.
 
-# Day 2 Design
+# rag-chatbot
+Personal project for learning RAG and LLM applications.
 
-Input: file_path
+## Progress
 
-Output: list[str]
+### Day 1
 
-Behavior:
+- Understand the RAG pipeline
+- Learn chunking and embeddings
+- Learn vector databases and retrievers
+- Document key concepts
 
-- Ignore empty lines.
-- Different file formats should return the same output structure.
+### Day 2
+
+- Design the document loader interface
+- Implement `load_document(filepath)`
+- Return `list[str]`
+- Remove empty lines
+- Normalize different document formats to the same output structure
+- Learn the difference between `print()` and `return`
+- Learn list comprehension
+
+### Day 3
+
+- Add support for loading PDF documents with `pypdf`
+- Support both `.txt` and `.pdf` files through one `load_document()` interface
+- Use `with open()` and UTF-8 encoding for safer text-file handling
+- Ignore empty lines and normalize output to `list[str]`
+- Add loader tests for TXT and PDF files
+
+### Day 4 
+
+- Implemented a fixed-size text chunking module.
+- Combined multiple text lines into configurable chunks.
+- Preserved remaining lines when the final chunk is smaller than the chunk size.
+- Added unit tests using pytest.
+
+Unit Tests:
+- Basic chunking (7 lines → 2 chunks)
+- Less than one chunk
+- Exactly one chunk
+- Empty input
+
+### Day 5
+
+- Implemented an embedding generation module using Sentence Transformers.
+- Used the pre-trained `all-MiniLM-L6-v2` model to convert text chunks into vector embeddings.
+- Returned embeddings as a NumPy array for compatibility with future vector search.
+- Added unit tests using pytest.
+
+Unit Tests:
+- Output type is `numpy.ndarray`
+- Correct embedding shape `(2, 384)`
+- One embedding generated for each input chunk
+
+Notes:
+- Learned how pre-trained embedding models encode text into numerical vectors.
+- Learned that semantic similarity is based on vector representations rather than exact words.
+- Learned that embedding models return NumPy arrays instead of Python lists.
+
+### Day 6
+
+- Implemented a retriever using cosine similarity.
+- Compared a query embedding with document embeddings.
+- Ranked document chunks based on similarity scores.
+- Returned the top-k most relevant text chunks.
+- Added unit tests using pytest.
+
+Unit Tests:
+- Retrieve the most similar chunk
+- Retrieve multiple top-ranked chunks
+- Handle `top_k` greater than the number of chunks
+- Handle empty input
