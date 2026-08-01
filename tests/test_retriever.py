@@ -1,7 +1,6 @@
-import numpy as np
-
 from src.retriever import retrieve
-
+import numpy as np
+from src.vector_store import create_collection, add_chunks
 """
 Test the retriever.
 
@@ -11,27 +10,20 @@ This script verifies that the retriever can:
 - Handle top_k values larger than the number of chunks
 - Return an empty list for empty input
 """
-def test_retrieve_most_similar_chunk():
+def test_retrieve_returns_relevant_chunks():
     chunks = [
-        "The office opens at 9 AM.",
-        "Employees receive 15 vacation days.",
-        "The cafeteria closes at 6 PM.",
+    "Solar energy uses sunlight.",
+    "Wind energy uses moving air.",
+    "Cats are common household pets.",
     ]
-
-    document_embeddings = np.array([
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [0.7, 0.7],
-    ])
-
-    query_embedding = np.array([1.0, 0.0])
+    collection = create_collection("test")
+    add_chunks(collection, "sample.txt", )
 
     result = retrieve(
-        query_embedding,
-        document_embeddings,
-        chunks,
-        top_k=1,
-    )
+    collection,
+    "What energy comes from the sun?",
+    top_k=2,
+)
 
     assert result == ["The office opens at 9 AM."]
 

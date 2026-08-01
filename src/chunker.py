@@ -1,16 +1,13 @@
-"""
-Text Chunker
-
-Input:
-    list[str]
-
-Output:
-    list[str]
-
-Behavior:
-    Combine multiple lines into fixed-size chunks.
-"""
 def chunk_text(lines: list[str], chunk_size: int = 5) -> list[str]:
+    """
+    Text Chunker
+    Combine multiple lines into fixed-size chunks.
+    
+    Args: lines: A list of text lines.
+          chunk_size: The number of lines in each chunk.
+    Returns:
+        A list of text chunks.
+    """
     current_chunk = []
     result = []
     for line in lines:

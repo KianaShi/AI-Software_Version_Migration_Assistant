@@ -39,7 +39,6 @@ This analogy is not perfectly accurate, but it helps me understand how retrieval
 # rag-chatbot
 Personal project for learning RAG and LLM applications.
 
-## Progress
 
 ### Day 1
 
@@ -109,3 +108,110 @@ Unit Tests:
 - Retrieve multiple top-ranked chunks
 - Handle `top_k` greater than the number of chunks
 - Handle empty input
+
+### Day 7
+
+- Implemented a prompt builder for the RAG pipeline.
+- Combined retrieved text chunks into a single context.
+- Built prompts using Python f-strings and triple-quoted strings.
+- Added instructions for the language model to answer using only the provided context.
+- Added unit tests using pytest.
+
+Unit Tests:
+- Include the user's question in the prompt
+- Include retrieved context chunks
+- Handle an empty context list
+
+### Day 8
+
+- Integrated ChromaDB as the vector store for the RAG pipeline.
+- Created and managed persistent ChromaDB collections.
+- Stored document chunks, embeddings, IDs, and metadata.
+- Generated unique IDs for each document chunk.
+- Added metadata to record the source document.
+- Added unit tests using pytest.
+
+Unit Tests:
+- Create a ChromaDB collection
+- Add document chunks and embeddings
+- Verify the number of stored records
+- Verify generated chunk IDs
+- Verify stored metadata
+- Verify stored documents
+
+### Day 9
+End-to-End RAG Pipeline
+Connected all previously implemented modules into a complete RAG pipeline.
+Embedded the user's question using the same embedding model.
+Retrieved the most relevant document chunks from the vector store.
+Built prompts by combining retrieved context with the user's question.
+Sent the final prompt to the language model.
+Verified that the entire RAG workflow runs end-to-end.
+
+Unit Tests:
+
+End-to-end retrieval pipeline
+Question embedding generation
+Prompt construction with retrieved context
+Empty retrieval results
+Multiple retrieved chunks
+
+### Day 10
+Evaluation and Testing
+Added a retrieval demo for manual evaluation.
+Tested the pipeline using natural language questions.
+Printed retrieved metadata, similarity scores, and retrieved text.
+Verified that ChromaDB returns the expected number of results.
+Evaluated retrieval quality on simple factual questions.
+
+Notes:
+
+Learned that retrieval quality cannot be measured only by whether the code runs.
+Retrieval results need manual inspection before connecting an LLM.
+
+### Day 11
+Building a Real Knowledge Base
+Replaced sample documents with the Shakespeare corpus.
+Implemented a dedicated HTML parser for Shakespeare plays.
+Extracted speakers, speeches, acts, and scenes.
+Ignored stage directions.
+Added metadata for each speech.
+Added unit tests for HTML parsing.
+
+Unit Tests:
+
+Speaker extraction
+Speech extraction
+Metadata extraction
+Stage direction removal
+
+Notes:
+
+Real-world datasets require task-specific preprocessing.
+Different document formats often need different loaders.
+
+### Day 12
+Building the Shakespeare Vector Store
+Parsed all Shakespeare HTML files.
+Generated embeddings for every speech.
+Stored embeddings, metadata, and IDs in ChromaDB.
+Skipped non-scene HTML files during indexing.
+Indexed 986 speeches successfully.
+
+Notes:
+
+Built an offline document ingestion pipeline.
+Learned the difference between indexing and querying.
+
+### Day 13
+Retrieval Evaluation and Chunking Optimization
+Evaluated retrieval quality using real Shakespeare questions.
+Observed that speech-level chunking sometimes lost conversational context.
+Identified retrieval failures caused by isolated dialogue segments.
+Designed a context-aware chunking strategy using neighboring speeches.
+Planned future comparison between different chunking strategies.
+
+Notes:
+
+Chunking strategy directly affects retrieval quality.
+Semantic chunking should depend on document structure rather than using a fixed strategy for every corpus.

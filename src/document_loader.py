@@ -1,16 +1,15 @@
 from pypdf import PdfReader
 
-"""
-Document Loader
-
-Support:
+def load_document(file_path) -> list[str]:
+    """
+    Document Loader
+    Support:
     - TXT
     - PDF
 
-Input: file path
-Output: list[str]
-"""
-def load_document(file_path) -> list[str]:
+    Args: file_path: the file path.
+    Output: A list of text lines.
+    """
     if file_path.lower().endswith(".txt"):
         with open(file_path, encoding="utf-8") as f:
             lines = f.read().split("\n")
