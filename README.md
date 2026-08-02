@@ -1,49 +1,59 @@
 # Shakespeare RAG
 
 > 🚧 **Work in Progress**  
-> A structure-aware Shakespeare question-answering system with benchmark-driven evaluation and planned multi-agent failure recovery.
+> A structure-aware Shakespeare question-answering system with benchmark-driven retrieval evaluation and planned multi-agent failure recovery.
 
 ---
 
 ## ✨ Overview
 
-Shakespeare's works are long, highly structured, and distributed across many plays, acts, scenes, speakers, and speeches. This project explores how Retrieval-Augmented Generation can answer questions about Shakespeare while grounding responses in the original texts.
+Shakespeare's works are long, highly structured, and distributed across plays, acts, scenes, speakers, and speeches. This project explores how Retrieval-Augmented Generation (RAG) can answer questions about Shakespeare while grounding responses in the original text.
 
-Rather than relying entirely on high-level RAG frameworks, the core pipeline is implemented step by step in Python. This makes it possible to inspect and evaluate each stage, including document parsing, chunking, embedding generation, vector storage, retrieval, prompt construction, and answer generation.
+Rather than relying entirely on a high-level RAG framework, the core pipeline is implemented step by step in Python. This makes each stage easier to inspect, test, and improve:
 
-The project currently includes a general RAG foundation, a Shakespeare-specific HTML loader, ChromaDB integration, and an automated evaluation benchmark loader.
+- document loading
+- HTML parsing
+- chunking
+- embedding generation
+- vector storage
+- retrieval
+- prompt construction
+- evaluation
+- answer generation
 
-The next stage focuses on importing the full MIT Shakespeare corpus, preserving literary metadata, evaluating retrieval quality, and extending the system into a failure-aware multi-agent workflow.
+The project began as a general RAG learning pipeline using TXT and PDF documents. It was later extended into a Shakespeare-focused system because plays provide meaningful literary structure—work, act, scene, speaker, and dialogue—that can be preserved and tested during retrieval.
+
+The current implementation can parse and index Hamlet scene files, preserve structured metadata, build a persistent ChromaDB vector store, and retrieve relevant dialogue for natural-language questions.
 
 ---
 
-## 🧠 System Pipeline
+## 🧠 Current System Pipeline
 
 ```text
-MIT Shakespeare HTML Corpus
+MIT Shakespeare HTML Files
             ↓
-Structured HTML Parsing
+Scene-Level HTML Parsing
             ↓
-Work / Act / Scene / Speaker Metadata
+Speech Records + Metadata
             ↓
-Structure-Aware Chunking
+Context-Aware Dialogue Chunking
             ↓
-Embedding Generation
+Sentence-Transformer Embeddings
             ↓
-ChromaDB Vector Index
+Persistent ChromaDB Collection
             ↓
-Semantic Retrieval
+Question Embedding
             ↓
-Evidence Verification
+Dense Vector Retrieval
+            ↓
+Top-K Evidence Chunks
             ↓
 Prompt Construction
             ↓
-LLM Answer Generation
-            ↓
-Citation Validation
+LLM Answer Generation (next stage)
 ```
 
-The planned agentic workflow will add planning, evidence checking, query rewriting, retries, critique, and execution tracing.
+The planned agentic workflow will later add evidence checking, query rewriting, retries, critique, citation validation, and execution tracing.
 
 ```text
 User Question
@@ -69,24 +79,30 @@ Final Answer + Sources + Trace
 
 - ✅ TXT document loader
 - ✅ PDF document loader
-- ✅ Fixed-size text chunking
-- ✅ Embedding generation using Sentence Transformers
-- ✅ Semantic retrieval
-- ✅ ChromaDB collection and storage modules
+- ✅ General fixed-size text chunker
+- ✅ Embedding generation with `all-MiniLM-L6-v2`
+- ✅ Query embedding generation
+- ✅ Dense semantic retrieval
+- ✅ Persistent ChromaDB storage
+- ✅ Metadata-aware vector records
 - ✅ Prompt builder
 - ✅ MIT Shakespeare scene-level HTML parser
-- ✅ Structured metadata extraction:
+- ✅ Structured extraction of:
   - work
   - act
   - scene
   - speaker
   - speech
+- ✅ Context-aware dialogue window chunking
+- ✅ Corpus ingestion script
+- ✅ Automatic filtering of non-scene HTML files
+- ✅ Collection reset and reproducible rebuilding
+- ✅ Retrieval demo with Top-K results, metadata, and distances
+- ✅ Hamlet index containing 20 scene files and 986 speech-centered chunks
 - ✅ Automated benchmark loading from multiple JSON files
 - ✅ Five-play benchmark subset with 507 question-answer records
 - ✅ Unit tests with pytest
-- ⏳ Full MIT Shakespeare corpus ingestion
-- ⏳ Structure-aware chunking
-- ⏳ Metadata-aware vector storage
+- ⏳ Cross-Encoder reranking
 - ⏳ Retrieval evaluation
 - ⏳ LLM response generation
 - ⏳ Multi-agent planning and evidence verification
@@ -100,21 +116,27 @@ Final Answer + Sources + Trace
 
 ### Shakespeare Corpus
 
-The project uses the HTML editions of Shakespeare's plays provided by the MIT Shakespeare project as the retrieval knowledge base.
+The project uses HTML editions from the MIT Shakespeare corpus as the retrieval knowledge base.
 
 - **Source:** TheMITTech/shakespeare
 - **Repository:** `https://github.com/TheMITTech/shakespeare`
-- **Usage:** Original play text used for parsing, metadata extraction, chunking, embedding generation, and retrieval
+- **Usage:** Parsing, metadata extraction, chunking, embedding generation, and retrieval
 
-The corpus contains scene-level HTML files with identifiable play, act, scene, speaker, dialogue, and stage-direction structure.
+The source repository contains both scene-level files and non-scene files such as `full.html`, `index.html`, or play-level overview files. The ingestion pipeline intentionally indexes only files matching the scene pattern:
 
-Example source file:
+```text
+work.act.scene.html
+```
+
+Example:
 
 ```text
 hamlet/hamlet.3.1.html
 ```
 
-Parsed output:
+Non-scene source files are preserved but skipped during indexing to avoid duplicate content and invalid act/scene metadata.
+
+Parsed speech record:
 
 ```python
 {
@@ -126,11 +148,11 @@ Parsed output:
 }
 ```
 
-The external corpus is kept separate from this repository during development. A download or setup script will be added so users can obtain the corpus without committing the entire source repository.
+The current local knowledge base contains Hamlet. Additional plays will be added after retrieval behavior is evaluated on the initial corpus.
 
 ### Evaluation Benchmark
 
-Retrieval and answer-generation performance are evaluated using selected files from:
+Retrieval and answer-generation performance will be evaluated using selected files from:
 
 - **Dataset:** Hananguyen12/QA-shakespeare-plays-dataset
 - **Platform:** Hugging Face
@@ -145,7 +167,7 @@ The current evaluation subset contains **507 questions across five plays**:
 - King Lear
 - Romeo and Juliet
 
-Each benchmark record may contain:
+Example benchmark record:
 
 ```python
 {
@@ -162,13 +184,13 @@ Each benchmark record may contain:
 }
 ```
 
-The benchmark files are used **only for evaluation** and are not inserted into the vector database. This separation prevents benchmark leakage.
+Benchmark files are used **only for evaluation** and are not inserted into the vector database. This separation helps prevent benchmark leakage.
 
 ---
 
 ## 📖 Knowledge Base Design
 
-The Shakespeare corpus preserves literary structure wherever possible:
+The corpus preserves literary structure wherever possible:
 
 ```text
 Work
@@ -180,7 +202,7 @@ Work
                 └── Dialogue
 ```
 
-The first parser version extracts individual speeches with metadata:
+The Shakespeare loader converts each valid scene file into structured speech records.
 
 ```python
 {
@@ -198,61 +220,201 @@ This metadata supports:
 - act and scene filtering
 - character-specific retrieval
 - source attribution
-- citation validation
 - benchmark evaluation
-- multi-play coverage checking
+- future citation validation
 
-Stage directions are detected separately and excluded from the speech records used by the current loader.
+Stage directions are excluded when they appear as separate non-speech blocks. Stage directions embedded inside a spoken block may remain part of the dialogue text.
 
 ---
 
-## 🔬 Retrieval Experiments
+## 🔬 Chunking Evolution
 
-A major focus of the project is comparing retrieval strategies rather than treating retrieval as a black box.
+Chunking was treated as an experimental design decision rather than a fixed preprocessing step.
 
 ### Baseline: Fixed-Size Chunking
 
-```text
-Document
-   ↓
-Fixed Character Windows
-   ↓
-Embedding
-   ↓
-Similarity Search
-```
-
-This strategy is simple but may split dialogue, speeches, scenes, or important literary context at arbitrary boundaries.
-
-### Structure-Aware Chunking
+The original general-purpose chunker combines a configurable number of text lines.
 
 ```text
-Play
-  ↓
-Act
-  ↓
-Scene
-  ↓
-Speech-Aware Chunk Groups
+Document Lines
+      ↓
+Fixed-Size Groups
+      ↓
+Text Chunks
 ```
 
-The structure-aware approach will preserve scene boundaries and combine nearby speeches without crossing unrelated scenes.
+This strategy remains useful for TXT, PDF, and other documents that do not have clear semantic boundaries.
 
-Planned comparison:
+### Version 1: One Speech per Chunk
+
+The first Shakespeare-specific implementation treated each speech as one semantic chunk.
 
 ```text
-Fixed-Size Chunking
-        vs.
-Structure-Aware Chunking
+One Speech
+    ↓
+One Chunk
 ```
 
-The goal is to determine whether literary structure improves retrieval accuracy, evidence quality, and citation reliability.
+This preserved speaker metadata cleanly, but retrieval testing exposed a weakness: important events may be distributed across adjacent speakers.
+
+For the question:
+
+```text
+Who killed Polonius?
+```
+
+the retriever often returned lines containing the name `Polonius`, while the crucial killing evidence appeared in nearby dialogue that did not explicitly mention his name.
+
+### Version 2: Context-Aware Dialogue Window
+
+The current strategy uses each speech as the center of a small dialogue window:
+
+```text
+Previous Speech
+       +
+Current Speech
+       +
+Next Speech
+       ↓
+Contextual Chunk
+```
+
+The metadata continues to describe the center speech, while the chunk text preserves local conversational context.
+
+This approach:
+
+- preserves dialogue flow
+- captures interactions between speakers
+- avoids arbitrary character boundaries
+- keeps chunks within the same scene file
+- improves candidate retrieval for event-based questions
+- provides better evidence for future reranking and answer generation
+
+The current experiment shows that dialogue windows improve context coverage, although dense retrieval can still prefer lexical matches. A Cross-Encoder reranker is planned to improve final ranking.
 
 ---
 
-## 📊 Evaluation
+## 🔎 Retrieval Behavior
 
-The project uses an external Shakespeare QA benchmark rather than evaluating only with manually selected demo questions.
+The retriever performs the following steps:
+
+```text
+User Question
+      ↓
+Question Embedding
+      ↓
+ChromaDB Similarity Search
+      ↓
+Top-K Chunks
+      ↓
+Text + Metadata + Distance
+```
+
+Example usage:
+
+```python
+results = retrieve(
+    collection=collection,
+    question="Who killed Polonius?",
+    top_k=5,
+)
+```
+
+Each result contains:
+
+```python
+{
+    "text": "...",
+    "metadata": {
+        "work": "hamlet",
+        "act": 3,
+        "scene": 4,
+        "speaker": "HAMLET"
+    },
+    "distance": 0.82
+}
+```
+
+Smaller ChromaDB distance values indicate greater vector similarity under the collection's configured distance behavior.
+
+---
+
+## 🧪 Running the Project
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Add the Shakespeare corpus
+
+Place scene-level HTML files under:
+
+```text
+data/
+└── corpus/
+    └── shakespeare/
+        └── hamlet/
+            ├── full.html
+            ├── hamlet.1.1.html
+            ├── hamlet.1.2.html
+            └── ...
+```
+
+The source-level `full.html` file may remain in the folder. The ingestion script automatically skips files that do not follow the `work.act.scene.html` naming pattern.
+
+### 3. Build the vector store
+
+Run commands from the project root:
+
+```bash
+py -m scripts.build_vector_store
+```
+
+The script:
+
+1. recursively discovers HTML files
+2. skips non-scene files
+3. parses structured speeches
+4. creates contextual dialogue chunks
+5. generates embeddings
+6. stores chunks and metadata in ChromaDB
+
+Current Hamlet build result:
+
+```text
+Processed files: 20
+Stored speeches: 986
+Collection count: 986
+```
+
+### 4. Run the retrieval demo
+
+```bash
+py -m scripts.demo_retrieval
+```
+
+The demo prints:
+
+- the input question
+- Top-K retrieved chunks
+- work, act, scene, and speaker metadata
+- vector distance values
+
+### 5. Run tests
+
+```bash
+py -m pytest -v
+```
+
+Tests cover the main RAG components, including loaders, chunking, embeddings, retrieval, prompt construction, benchmark loading, Shakespeare parsing, and vector storage.
+
+---
+
+## 📊 Evaluation Plan
+
+The project uses an external Shakespeare QA benchmark rather than relying only on manually selected demo questions.
 
 ### Planned Retrieval Metrics
 
@@ -264,7 +426,7 @@ The project uses an external Shakespeare QA benchmark rather than evaluating onl
 - Correct play rate
 - Correct act and scene rate
 
-For a benchmark record such as:
+Example:
 
 ```text
 Question:
@@ -288,7 +450,7 @@ The retriever succeeds when the expected scene appears within the returned Top-K
 
 ### Breakdown Analysis
 
-Because the benchmark includes category and difficulty labels, results can be analyzed by:
+Results can be analyzed by category:
 
 ```text
 Category
@@ -298,7 +460,7 @@ Category
 └── scene
 ```
 
-and:
+and difficulty:
 
 ```text
 Difficulty
@@ -307,13 +469,13 @@ Difficulty
 └── advanced
 ```
 
-This will help identify where the system fails instead of reporting only one overall score.
+This makes it possible to identify specific failure patterns rather than reporting only one overall score.
 
 ---
 
 ## 🤖 Planned Multi-Agent Failure Recovery
 
-The final system is planned as a failure-aware multi-agent workflow.
+The future system is planned as a failure-aware multi-agent workflow.
 
 ### Planned Agents
 
@@ -325,7 +487,7 @@ The final system is planned as a failure-aware multi-agent workflow.
 
 **Retrieval Agent**
 
-- calls the Shakespeare search tool
+- searches the Shakespeare knowledge base
 - applies metadata filters
 - adjusts Top-K
 - rewrites weak queries
@@ -367,6 +529,7 @@ Possible recovery actions include:
 Query Rewrite
 Metadata Filter
 Higher Top-K
+Cross-Encoder Reranking
 Fallback Search
 Answer Revision
 Human Review
@@ -406,6 +569,12 @@ rag-chatbot/
 ├── chroma_db/
 │
 ├── data/
+│   ├── corpus/
+│   │   └── shakespeare/
+│   │       └── hamlet/
+│   │           ├── full.html
+│   │           ├── hamlet.1.1.html
+│   │           └── ...
 │   ├── sample.pdf
 │   └── sample.txt
 │
@@ -413,7 +582,13 @@ rag-chatbot/
 │   ├── architecture-day1.png
 │   └── notes.md
 │
+├── scripts/
+│   ├── __init__.py
+│   ├── build_vector_store.py
+│   └── demo_retrieval.py
+│
 ├── src/
+│   ├── __init__.py
 │   ├── benchmark_loader.py
 │   ├── document_loader.py
 │   ├── shakespeare_loader.py
@@ -421,11 +596,7 @@ rag-chatbot/
 │   ├── embedding.py
 │   ├── retriever.py
 │   ├── vector_store.py
-│   ├── prompt_builder.py
-│   │
-│   └── tools/
-│       ├── __init__.py
-│       └── shakespeare_search.py
+│   └── prompt_builder.py
 │
 ├── tests/
 │   ├── test_benchmark_loader.py
@@ -446,6 +617,10 @@ Planned additions:
 
 ```text
 src/
+├── reranker.py
+├── llm.py
+├── pipeline.py
+│
 ├── agents/
 │   ├── planner.py
 │   ├── retrieval_agent.py
@@ -471,38 +646,46 @@ src/
 
 ### Core RAG Pipeline
 
-- [x] TXT Document Loader
-- [x] PDF Document Loader
-- [x] Fixed-Size Text Chunking
-- [x] Embedding Generation
-- [x] Semantic Retriever
-- [x] ChromaDB Storage Module
-- [x] Prompt Builder
-- [ ] LLM Integration
+- [x] TXT document loader
+- [x] PDF document loader
+- [x] Fixed-size text chunker
+- [x] Embedding generation
+- [x] Question embedding generation
+- [x] Dense semantic retriever
+- [x] Persistent ChromaDB storage
+- [x] Prompt builder
+- [x] Retrieval demo
+- [ ] Cross-Encoder reranker
+- [ ] LLM integration
+- [ ] End-to-end answer pipeline
 
 ### Shakespeare Knowledge Base
 
 - [x] Inspect MIT Shakespeare HTML structure
-- [x] Parse work / act / scene metadata
+- [x] Parse work, act, and scene metadata
 - [x] Extract speaker and speech records
-- [x] Exclude stage directions from speech records
+- [x] Exclude separate stage-direction blocks
 - [x] Add Shakespeare loader tests
-- [ ] Add automated corpus download script
-- [ ] Import selected MIT Shakespeare plays
-- [ ] Store complete metadata in ChromaDB
-- [ ] Implement structure-aware chunking
-- [ ] Build the full Shakespeare vector index
+- [x] Import Hamlet scene files
+- [x] Store structured metadata in ChromaDB
+- [x] Implement context-aware dialogue chunking
+- [x] Build the Hamlet vector index
+- [ ] Add automated corpus download/setup script
+- [ ] Import additional Shakespeare plays
+- [ ] Build the full multi-play vector index
+- [ ] Evaluate alternative dialogue window sizes
 
 ### Evaluation
 
 - [x] Select five benchmark plays
 - [x] Add 507 benchmark QA records
 - [x] Implement automated benchmark loader
-- [ ] Add benchmark loader tests
-- [ ] Measure Recall@1 / Recall@3 / Recall@5
+- [x] Add benchmark loader tests
+- [ ] Measure Recall@1, Recall@3, and Recall@5
 - [ ] Measure Mean Reciprocal Rank
 - [ ] Measure retrieval latency
-- [ ] Compare fixed-size and structure-aware chunking
+- [ ] Compare single-speech and dialogue-window chunking
+- [ ] Compare dense retrieval with reranked retrieval
 - [ ] Evaluate results by category and difficulty
 - [ ] Add answer-quality evaluation
 - [ ] Generate evaluation reports
@@ -533,14 +716,15 @@ src/
 
 ## 🎯 Goal
 
-The goal of this project is not only to create a working Shakespeare chatbot, but to build and evaluate a transparent retrieval system that can detect and recover from failure.
+The goal of this project is not only to create a working Shakespeare chatbot, but also to build and evaluate a transparent retrieval system that can detect and recover from failure.
 
 The project explores:
 
-- how literary structure affects chunking
-- how metadata affects retrieval
+- how dialogue-aware chunking affects retrieval quality
+- how literary structure and metadata affect retrieval
 - how retrieval quality can be measured
 - how benchmark leakage can be prevented
+- how dense retrieval can be improved with reranking
 - how evidence can be validated before answer generation
 - how multi-agent systems can recover from weak retrieval
 - how execution traces can make agent behavior observable
@@ -556,12 +740,16 @@ The final system will provide a searchable Shakespeare research experience backe
 
 Current progress includes:
 
-- a general RAG pipeline
+- a general RAG foundation
+- TXT and PDF document support
 - a scene-level MIT Shakespeare HTML parser
 - structured speech metadata extraction
-- ChromaDB storage and retrieval modules
+- context-aware dialogue chunking
+- persistent ChromaDB indexing
+- a 986-chunk Hamlet knowledge base built from 20 scene files
+- dense retrieval with metadata and distance inspection
 - an automated benchmark loader
 - a 507-question benchmark subset across five plays
 - pytest coverage for the core modules
 
-The next milestone is importing the MIT Shakespeare corpus, storing metadata-rich chunks in ChromaDB, and running the first Recall@K evaluation.
+The next milestone is adding a Cross-Encoder reranker, measuring retrieval quality, and then connecting an LLM to complete the end-to-end RAG answer pipeline.
