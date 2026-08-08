@@ -30,8 +30,9 @@ def generate_id(prefix: str, *parts: str) -> str:
 
 class SourceType(str, Enum):
     RELEASE_NOTE = "RELEASE_NOTE"
-    PR_DIFF = "PR_DIFF"
     MIGRATION_GUIDE = "MIGRATION_GUIDE"
+    OFFICIAL_DOCS = "OFFICIAL_DOCS"
+    GITHUB_PR_ISSUE = "GITHUB_PR_ISSUE"
 
 
 class ChangeType(str, Enum):
@@ -41,6 +42,7 @@ class ChangeType(str, Enum):
     DEPRECATED = "DEPRECATED"
     BEHAVIOR_CHANGED = "BEHAVIOR_CHANGED"
     MOVED = "MOVED"
+    REPLACEMENT = "REPLACEMENT"
 
 
 class LinkType(str, Enum):
@@ -100,6 +102,11 @@ class ChangeAttributes:
     change_type: str  # ChangeType value
     summary: str
     external_refs: list[str] = field(default_factory=list)
+    # populated for ChangeType.REPLACEMENT: the symbol name this was replaced by
+    replacement_symbol: str | None = None
+    # parameter names the change specifically implicates, if any (e.g. a
+    # SIGNATURE_CHANGED naming exactly which parameter was affected)
+    parameters: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -108,11 +115,19 @@ class UnresolvedChange(ChangeAttributes):
     The contract a future Level 1 extraction step must satisfy: everything
     needed to attempt resolution against the existing change registry, but
     with no change_id yet since identity hasn't been decided.
+
+    Level 1 extraction answers "what does this evidence claim?" only -- it
+    must never decide "which existing ChangeRecord is this?" (that's the
+    aggregation pipeline's job). extraction_confidence/extraction_method
+    describe how *this claim* was derived, not how confidently it matches
+    anything else.
     """
 
     source_type: str = ""  # SourceType value
     source_document_id: str = ""
     raw_text: str = ""
+    extraction_confidence: str = ""  # extraction.models.ExtractionConfidence value
+    extraction_method: str = ""      # e.g. "regex:version_marker", "llm:structured_fallback"
 
 
 @dataclass

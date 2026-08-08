@@ -54,6 +54,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             change_type TEXT NOT NULL,
             summary TEXT NOT NULL,
             external_refs TEXT NOT NULL,
+            replacement_symbol TEXT,
+            parameters TEXT NOT NULL,
             source_type TEXT NOT NULL,
             source_document_id TEXT NOT NULL,
             raw_text TEXT NOT NULL
@@ -116,6 +118,8 @@ def _row_to_change_record(row: sqlite3.Row) -> ChangeRecord:
         change_type=row["change_type"],
         summary=row["summary"],
         external_refs=json.loads(row["external_refs"]),
+        replacement_symbol=row["replacement_symbol"],
+        parameters=json.loads(row["parameters"]),
         change_id=row["change_id"],
         source_type=row["source_type"],
         source_document_id=row["source_document_id"],
@@ -129,8 +133,9 @@ def insert_change_record(conn: sqlite3.Connection, change: ChangeRecord) -> None
         INSERT INTO change_records (
             change_id, symbol_name, symbol_package, symbol_kind,
             version_from, version_to, change_type, summary,
-            external_refs, source_type, source_document_id, raw_text
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            external_refs, replacement_symbol, parameters,
+            source_type, source_document_id, raw_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             change.change_id,
@@ -142,6 +147,8 @@ def insert_change_record(conn: sqlite3.Connection, change: ChangeRecord) -> None
             change.change_type,
             change.summary,
             json.dumps(change.external_refs),
+            change.replacement_symbol,
+            json.dumps(change.parameters),
             change.source_type,
             change.source_document_id,
             change.raw_text,

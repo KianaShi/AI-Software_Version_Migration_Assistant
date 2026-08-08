@@ -121,3 +121,107 @@ pre-existing mismatch from before this session).
 
 **Files added**: `src/presentation/__init__.py`,
 `src/presentation/confidence_view.py`, `tests/test_confidence_view.py`.
+
+## Stage 5 — Level 1 extraction (deterministic-first)
+
+Repo renamed on GitHub to `AI-Software_Version_Migration_Assistant`; local
+`origin` remote updated to match. README confirmed the architecture
+described there matches what's built so far.
+
+**Scope boundary, restated because it matters**: Level 1 answers "what
+does this piece of evidence claim?" only. It never decides which
+`ChangeRecord` a claim belongs to and never generates a `change_id` --
+that's exclusively `src/aggregation/linker.py`'s job (Stage 3, untouched).
+`extract_changes()` returns `UnresolvedChange` objects and nothing else.
+`tests/test_change_extraction.py::test_never_generates_a_change_id`
+asserts this structurally (`UnresolvedChange` has no `change_id` field at
+all, so there's nothing to accidentally set).
+
+Decided against fixing the 5 pre-existing `test_retriever.py` /
+`test_vector_store.py` failures now: those two modules are expected to be
+replaced by a Hybrid Retrieval / Qdrant layer later, so realigning tests
+to an interface that's likely to be rewritten soon has low expected
+value. Left as-is with the same "pre-existing, unrelated" note; revisit
+in its own commit once the retrieval layer's fate is decided.
+
+**What**: Added `src/extraction/`:
+- `models.py` — `SourceDocument` (document_id, source_type, raw_text,
+  provenance, url, version, date, document_refs) and `ExtractionConfidence`
+  (EXPLICIT / INFERRED) — deliberately separate from `src.entities.models`
+  to keep the "claims vs. identity" boundary visible in the import graph,
+  not just in a comment.
+- `sources.py` — `parse_release_note` / `parse_migration_guide` /
+  `parse_official_docs` / `parse_github_pr_issue`. Each normalizes raw
+  text you already have, plus its metadata, into a `SourceDocument`; none
+  of them fetch anything over the network (no GitHub API / docs-site
+  crawling in this pass -- that's separate infrastructure requiring auth
+  and rate-limit handling).
+- `version_normalization.py` — `find_version_mentions()` /
+  `parse_version_expression()` parse "v1.2", "1.2.x", "since 1.2",
+  "removed in 2.0", "1.2 to 2.0", "1.2 - 2.0", and "between 1.2 and 2.0"
+  into a structured `VersionMention(normalized, qualifier, span,
+  normalized_end)`. Only syntax is normalized (strip "v" prefix, strip
+  ".x" wildcard suffix) -- no semver ordering/comparison, since nothing
+  downstream needs it yet (constraints.py compares version strings for
+  equality).
+- `symbol_normalization.py` — `normalize_symbol()` / `find_symbol_mentions()`
+  fold `FooClient.create()`, `foo.FooClient.create`, `FooClient#create`,
+  `FooClient::create` into the same canonical `Symbol(name="FooClient.create",
+  package=..., kind=...)`. Backtick code spans are the primary signal;
+  un-backticked mentions are only recognized when they look unambiguously
+  like a call (`Class.method()`), and a backtick-quoted bare word (e.g.
+  `` `timeout` ``, a parameter name) is deliberately excluded from symbol
+  detection -- an early version of this regex misread every quoted
+  parameter name as its own symbol before the "requires a dotted path or
+  trailing `()`" rule was tightened.
+- `llm_fallback.py` — `LLMExtractor` protocol + `NotConfiguredLLMExtractor`,
+  which declines everything. No LLM is wired into this repo (README:
+  "OpenAI API (planned)"); this is the seam a future implementation plugs
+  into, not a real integration.
+- `change_extraction.py` — `extract_changes(document, default_package,
+  llm_extractor=None)`, deterministic-first: regex/keyword rules for a
+  fixed vocabulary of change verbs (removed/renamed/deprecated/moved/
+  signature-changed/behavior-changed) plus dedicated replacement-style
+  patterns ("X was replaced by Y", "X is deprecated in favor of Y", "use Y
+  instead of X") that correctly produce *one* claim about two symbols
+  instead of two claims. A statement naming more than one symbol that
+  isn't a replacement pattern is split once on conjunctions ("and"/";")
+  and each half re-extracted independently, so "`A` was removed and `B`
+  was renamed" yields two separate `UnresolvedChange` records rather than
+  one merged/garbled one. Markdown headings carrying a version (e.g. `##
+  v5.0.0`) become ambient context for statements under them that have no
+  inline version of their own -- used, but always as `INFERRED` confidence
+  with `extraction_method` containing `ambient_version`, never `EXPLICIT`.
+  A statement with a change-verb but no attributable symbol, or a symbol
+  mention with no change-verb nearby, extracts nothing rather than
+  guessing. The LLM fallback is only invoked when a statement has a symbol
+  mention, no deterministic change-verb match, and an ambiguous signal
+  word (breaking/note/warning/updated/modified/change(d/s)) -- and with no
+  extractor configured, that path still safely returns nothing.
+
+**Why**: Matches the precision-first principle established in Level 2,
+applied one stage earlier: Level 1 is exactly as willing to emit *nothing*
+as Level 2 is to leave two changes unmerged. Deterministic-first (regex on
+explicit version/PR/symbol/keyword signals) keeps extraction cheap and
+debuggable; the LLM fallback is reserved for genuinely ambiguous natural-
+language semantics, per your instruction, and isn't wired to a live model
+in this pass since none exists in the repo yet.
+
+**Files added**: `src/extraction/__init__.py`, `models.py`, `sources.py`,
+`version_normalization.py`, `symbol_normalization.py`, `change_extraction.py`,
+`llm_fallback.py`, and `tests/test_source_adapters.py`,
+`tests/test_version_normalization.py`, `tests/test_symbol_normalization.py`,
+`tests/test_change_extraction.py` (43 new tests, all passing).
+
+**Files modified**: `src/entities/models.py` (additive, backward-compatible:
+`ChangeType.REPLACEMENT`; `ChangeAttributes.replacement_symbol` and
+`.parameters`; `SourceType.PR_DIFF` renamed to `GITHUB_PR_ISSUE` (never
+referenced elsewhere, zero-cost rename) plus new `OFFICIAL_DOCS`;
+`UnresolvedChange.extraction_confidence` and `.extraction_method`) and
+`src/entities/store.py` (schema/row-mapping updated for the two new
+`ChangeAttributes` columns). Verified via the existing Stage 2/3 test
+suite (35 tests) that this didn't break anything before proceeding.
+
+Full suite after this stage: 86 passed, the same 5 pre-existing
+`test_retriever.py`/`test_vector_store.py` failures (deliberately not
+touched, see above).
