@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Local vector store / entity store data (regenerable)
+chroma_db/
+data/entities.db
+
 # C extensions
 *.so
 
