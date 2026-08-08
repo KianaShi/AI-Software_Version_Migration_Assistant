@@ -225,3 +225,113 @@ suite (35 tests) that this didn't break anything before proceeding.
 Full suite after this stage: 86 passed, the same 5 pre-existing
 `test_retriever.py`/`test_vector_store.py` failures (deliberately not
 touched, see above).
+
+## Stage 6 — Retrieval v1 baseline (dense + sparse + hybrid, evaluation harness)
+
+Explicit decision, stated before this stage started: baseline retrieval
+first, evaluate it, and only then decide whether wiring a real LLM
+fallback into Level 1 is worth it -- LLM fallback is a recall booster on
+top of an already-tested deterministic main path, not a blocker. Also
+explicitly deferred: Late Chunking, rerankers, and Agentic RAG all wait
+for this baseline to exist so they can be evaluated as ablations against
+it rather than added on faith.
+
+**What**: Added `src/retrieval/`:
+- `models.py` -- `Chunk` (chunk_id, text, source_document_id, source_type,
+  provenance, package, version, symbols, `evidence_id`) and
+  `RetrievedChunk` (chunk, score, rank). `evidence_id` is the traceability
+  hook requested up front: nullable, not populated by anything in this
+  stage, but present so a retrieved chunk can eventually be mapped back to
+  the `Evidence`/`ChangeRecord` that Level 1/2 produced from it, once/if
+  extraction ever runs per-chunk instead of per-document. Chunk is
+  deliberately a distinct type from `entities.models.Evidence`, not a
+  reuse of it -- a chunk is an index-time retrieval unit that may or may
+  not ever have had Level 1 run on it; conflating the two would couple
+  retrieval to extraction having already happened.
+- `chunking.py` -- source-aware, not Late Chunking: release notes chunk
+  per bullet entry within each version-heading section (changelogs are
+  itemized -- one bullet is usually one change); migration guides and
+  official docs chunk per heading-scoped section (prose-heavy, coarser
+  granularity is more coherent); PR/issue bodies chunk per paragraph (no
+  heading/itemization to lean on, and "relevant discussion" beyond the
+  body text isn't available without a real GitHub API integration, which
+  is still out of scope -- see Stage 5's sources.py note). Known
+  limitation, not fixed this pass: a version stated in a top-level heading
+  doesn't cascade down to child headings below it, only to text directly
+  under that heading.
+- `version_filter.py` -- `VersionInterval` + `intervals_overlap()`, reusing
+  `extraction.version_normalization` rather than re-parsing version
+  syntax. `parse_version_key()` turns a normalized version string into a
+  tuple of ints so `1.2 < 1.10` compares correctly (not lexically). Query
+  and chunk versions both become intervals (a bare version is a
+  degenerate single-point interval); overlap is a bounds check, not
+  string equality, so a query for "1.2 to 2.0" matches a chunk tagged
+  "1.5" even though the strings never match.
+- `dense_index.py` -- thin wrapper over the existing `embedding.py` +
+  `vector_store.py` (ChromaDB), specialized to `Chunk`. Required a small
+  backward-compatible extension to `vector_store.add_chunks()`: an
+  optional `ids` parameter (default `None` preserves the old
+  document-name-derived-id behavior) so chunks can be indexed under their
+  own `chunk_id` instead of an auto-generated one -- otherwise retrieval
+  results couldn't map cleanly back to `Chunk` objects.
+- `sparse_index.py` -- hand-rolled Okapi BM25, no new dependency (matches
+  this repo's existing "build the pipeline from scratch" approach). The
+  tokenizer keeps a dotted identifier like `FooClient.create` as one token
+  *and* splits it into `fooclient`/`create`, so a bare method-name query
+  still matches -- this is the concrete reason to have a sparse baseline
+  at all, since exact API/class/parameter names are exactly what dense
+  embeddings tend to blur.
+- `filters.py` -- post-retrieval filtering (package equality, version
+  overlap) applied identically after dense, sparse, or hybrid retrieval,
+  so the three are compared under the same filter semantics. Applied
+  after ranking rather than pushed into the index query, since neither
+  Chroma's `where` nor the hand-rolled BM25 index supports interval-
+  overlap filtering natively. A chunk with an unknown package/version is
+  kept, not dropped -- missing metadata isn't evidence of a mismatch.
+- `hybrid.py` -- Reciprocal Rank Fusion over dense + sparse rankings by
+  rank position only (dense distances and BM25 scores aren't on
+  comparable scales), one constant (`RRF_K = 60`, the standard default),
+  no per-source weight tuning.
+- `retrieval.py` -- `retrieve_dense` / `retrieve_sparse` / `retrieve_hybrid`
+  sharing one signature and the same `filters.apply_filters` step, so
+  `evaluation.py` can swap between them against the same gold set.
+  Over-fetches (4x top_k) before filtering, since filtering after ranking
+  can otherwise leave fewer than top_k results even when enough exist
+  further down the raw ranking.
+- `evaluation.py` -- `recall_at_k` / `mrr` / `ndcg_at_k`, all item-id-
+  agnostic (they never assume the ids are chunk ids). `GoldQuery` is
+  annotated at the change_id level per the design brief
+  (`required_change_ids`, not a single expected chunk); `resolve_to_change_ids()`
+  is the injected chunk-id-ranking -> deduplicated-change-id-ranking step
+  that lets Recall@K run today without the full Level 1/2 pipeline wired
+  end-to-end per chunk. Upgrading to Migration Chain Recall later is a new
+  metric function operating on the same resolved id lists, not a
+  re-annotation of the gold set.
+
+**Files added**: `src/retrieval/__init__.py`, `models.py`, `chunking.py`,
+`version_filter.py`, `dense_index.py`, `sparse_index.py`, `filters.py`,
+`hybrid.py`, `retrieval.py`, `evaluation.py`, and `tests/test_chunking.py`,
+`tests/test_version_filter.py`, `tests/test_dense_index.py`,
+`tests/test_sparse_index.py`, `tests/test_filters.py`, `tests/test_hybrid.py`,
+`tests/test_retrieval_evaluation.py`, `tests/test_retrieval_integration.py`
+(49 new tests, all passing -- the last file builds a small corpus and
+runs dense/sparse/hybrid side by side, confirming BM25 wins an exact-
+symbol-name query outright and that the version filter behaves
+identically across all three retrieval modes).
+
+**Files modified**: `src/vector_store.py` (`add_chunks` gained an optional
+`ids` parameter, backward compatible).
+
+**Note on a parallel automation**: partway through this stage, `git
+status` showed `src/retrieval/models.py` and `chunking.py` already
+committed and pushed to `origin/main` (commits "1" and "Create
+chunking.py") that neither this session nor any command in it created.
+Confirmed with you this is an intentional auto pull/commit/push tool you
+run against this repo, independent of this session -- noting it here
+since it means "local commit, not pushed" is no longer a safe assumption
+to state about work in this repo going forward.
+
+Full suite after this stage: 135 passed, the same 5 pre-existing
+`test_retriever.py`/`test_vector_store.py` failures (still deliberately
+untouched -- see Stage 5's note on why, now doubly true since a Hybrid
+Retrieval baseline exists to eventually replace them with).

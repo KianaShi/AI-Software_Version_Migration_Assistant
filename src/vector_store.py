@@ -42,7 +42,8 @@ def add_chunks(
     document_name: str,
     chunks: list[str],
     embeddings,
-    metadatas: list[dict]
+    metadatas: list[dict],
+    ids: list[str] | None = None,
 ):
     """
     Add document chunks and their embeddings to a ChromaDB collection.
@@ -53,12 +54,13 @@ def add_chunks(
         chunks: Text chunks to be stored.
         embeddings: Embedding vectors corresponding to each chunk.
         metadatas: Metadata associated with each chunk.
+        ids: Explicit ids for each chunk. When omitted, ids are derived
+            from document_name (existing behavior, unchanged).
     """
-    safe_name = document_name.replace(".", "_")
-    
-    ids = [f"{safe_name}_chunk_{i}"
-    for i in range(len(chunks))
-    ]
+    if ids is None:
+        safe_name = document_name.replace(".", "_")
+        ids = [f"{safe_name}_chunk_{i}" for i in range(len(chunks))]
+
     collection.add(
     ids=ids,
     documents=chunks,
