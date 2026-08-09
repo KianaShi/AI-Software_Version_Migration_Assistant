@@ -42,7 +42,13 @@ def rank_of_change(retrieved_chunk_ids: list[str], target_change_id: str, chunk_
 
 
 def find_failing_query_ids() -> list[str]:
-    """Authoritative: any non-negative query with hybrid recall_at_5 < 1.0 in the real benchmark run."""
+    """
+    Authoritative: any change_retrieval-scope query with hybrid recall_at_5
+    < 1.0 in the real benchmark run. per_query_results.csv is built only
+    from evaluation_scope=="change_retrieval" queries (see
+    run_pydantic_benchmark.py), so stability/query_planner queries never
+    appear here to begin with.
+    """
     failing = []
     with RESULTS_CSV.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -63,7 +69,7 @@ def hybrid_rank_at_benchmark_pool_size(query_text, collection, sparse_index, chu
 
 
 def main() -> None:
-    gold_records = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    gold_records = json.loads(GOLD_PATH.read_text(encoding="utf-8"))["queries"]
     gold = {r["query_id"]: r for r in gold_records}
     chunks, conn, _ = run_pipeline()
     collection, sparse_index = build_indices(chunks)
@@ -82,7 +88,7 @@ def main() -> None:
     changes = {r["change_id"]: dict(r) for r in conn.execute("SELECT * FROM change_records")}
 
     failing_query_ids = find_failing_query_ids()
-    print(f"Non-negative queries with hybrid Recall@5 < 1.0 (from {RESULTS_CSV}): {failing_query_ids}\n")
+    print(f"change_retrieval-scope queries with hybrid Recall@5 < 1.0 (from {RESULTS_CSV}): {failing_query_ids}\n")
 
     for query_id in failing_query_ids:
         q = gold[query_id]

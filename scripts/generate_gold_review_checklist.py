@@ -25,7 +25,9 @@ FLAGGED_TYPES = {
 
 
 def main() -> None:
-    gold = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    data = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    metadata = data["metadata"]
+    gold = data["queries"]
     chunks, conn, _stats = run_pipeline()
     conn.row_factory = sqlite3.Row
     chunks_by_id = {c.chunk_id: c for c in chunks}
@@ -34,11 +36,12 @@ def main() -> None:
     evidence = {r["evidence_id"]: dict(r) for r in conn.execute("SELECT * FROM evidence")}
 
     lines = [
-        "# Pydantic Gold Set v2 — Human Review Checklist",
+        f"# {metadata['name']} — Human Review Checklist (review_revision={metadata['review_revision']})",
+        "",
+        f"Scope: {metadata['migration_scope']}. Status: `{metadata['status']}`.",
         "",
         "Generated from `data/gold/pydantic_gold_queries.json` against the live "
-        "corpus/entities.db, rebuilt fresh by this script (Stage 8A remediation "
-        "commit). For each query, review:",
+        "corpus/entities.db, rebuilt fresh by this script. For each query, review:",
         "",
         "1. Is the query itself reasonable/realistic?",
         "2. Are `required_change_ids` correct and complete?",

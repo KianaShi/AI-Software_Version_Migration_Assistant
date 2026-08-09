@@ -1,6 +1,8 @@
-# Pydantic Gold Set v2 — Human Review Checklist
+# Pydantic Gold Set v1 — Human Review Checklist (review_revision=3)
 
-Generated from `data/gold/pydantic_gold_queries.json` against the live corpus/entities.db, rebuilt fresh by this script (Stage 8A remediation commit). For each query, review:
+Scope: 1.10.x -> 2.x. Status: `pending_freeze`.
+
+Generated from `data/gold/pydantic_gold_queries.json` against the live corpus/entities.db, rebuilt fresh by this script. For each query, review:
 
 1. Is the query itself reasonable/realistic?
 2. Are `required_change_ids` correct and complete?
@@ -15,7 +17,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## behavioral_change ⚠️ (3 queries)
 
-### `q_behav_01`
+### `q_behav_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Why do two non-generic models of different model types no longer compare equal in v2 even with matching field values?
 **from/to version**: 1.10 → 2.0
 
@@ -29,7 +31,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_behav_02`
+### `q_behav_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My pydantic dataclass used to accept a tuple for a nested field and now raises a validation error in v2 -- why?
 **from/to version**: 1.10 → 2.0
 
@@ -43,7 +45,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_behav_03`
+### `q_behav_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Why don't arbitrary extra kwargs on `Field()` work for JSON Schema metadata in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -59,7 +61,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## config_change (3 queries)
 
-### `q_config_01`
+### `q_config_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Is the `Config` inner class still used for model configuration in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -74,7 +76,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_config_02`
+### `q_config_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I set `allow_mutation = False` on my model's `Config` -- what's the v2 equivalent?
 **from/to version**: 1.10 → 2.0
 
@@ -88,7 +90,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_config_03`
+### `q_config_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I pass extra keyword arguments to `Field()` for JSON schema metadata -- does that still work in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -104,7 +106,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## dependency_change (5 queries)
 
-### `q_dep_01`
+### `q_dep_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My project imports `BaseSettings` from `pydantic` -- what package do I need for v2?
 **from/to version**: 1.10 → 2.0
 
@@ -119,7 +121,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_dep_02`
+### `q_dep_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I use `pydantic.color` types in my models -- what do I need to install for v2?
 **from/to version**: 1.10 → 2.0
 
@@ -133,7 +135,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_dep_03`
+### `q_dep_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My code catches `pydantic.error_wrappers.ValidationError` -- where does that live in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -147,7 +149,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_dep_04`
+### `q_dep_04` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I use `pydantic.utils.to_camel` -- where did it move in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -161,7 +163,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_dep_05`
+### `q_dep_05` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: How should I replace `pydantic.tools.parse_obj_as` in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -177,7 +179,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## exact_symbol (8 queries)
 
-### `q_exact_01`
+### `q_exact_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What happened to `BaseModel.dict()` in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -192,7 +194,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_02`
+### `q_exact_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What replaced `BaseModel.parse_obj()` in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -207,7 +209,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_03`
+### `q_exact_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Is `BaseModel.copy()` still available in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -221,7 +223,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_04`
+### `q_exact_04` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What is the v2 equivalent of `BaseModel.construct()`?
 **from/to version**: 1.10 → 2.0
 
@@ -235,7 +237,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_05`
+### `q_exact_05` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: How do I replace `BaseModel.json()` when upgrading to v2?
 **from/to version**: 1.10 → 2.0
 
@@ -249,7 +251,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_06`
+### `q_exact_06` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Is the `@validator` decorator still recommended in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -264,7 +266,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_07`
+### `q_exact_07` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What should I use instead of `@root_validator` in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -279,7 +281,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_exact_08`
+### `q_exact_08` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What replaced `BaseModel.update_forward_refs()` in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -295,7 +297,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## legacy_symbol (3 queries)
 
-### `q_amb_02`
+### `q_amb_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Where did `validator` go in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -310,7 +312,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_amb_03`
+### `q_amb_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What's the relationship between `root_validator` and `model_validator`?
 **from/to version**: 1.10 → 2.0
 
@@ -325,7 +327,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_amb_04`
+### `q_amb_04` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Is `Config` still a thing in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -342,7 +344,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## multi_change ⚠️ (6 queries)
 
-### `q_multi_01`
+### `q_multi_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: A model class calls both `.dict()` and `.parse_obj()` -- what needs to change to migrate it to v2?
 **from/to version**: 1.10 → 2.0
 
@@ -360,7 +362,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_multi_02`
+### `q_multi_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My codebase uses both `@validator` and `@root_validator` extensively -- what's the full v2 upgrade path?
 **from/to version**: 1.10 → 2.0
 
@@ -378,7 +380,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_multi_03`
+### `q_multi_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I have a settings class subclassing `BaseSettings` and other models calling `.dict()` -- what all changes for v2?
 **from/to version**: 1.10 → 2.0
 
@@ -396,7 +398,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_multi_04`
+### `q_multi_04` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I use `GenericModel` for generics and `ConstrainedStr` for string constraints -- how do both migrate to v2?
 **from/to version**: 1.10 → 2.0
 
@@ -413,7 +415,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_multi_05`
+### `q_multi_05` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My code imports `pydantic.color` and catches `pydantic.error_wrappers.ValidationError` -- what import paths change in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -429,7 +431,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_multi_06`
+### `q_multi_06` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I call `.json()` and `.copy()` on models throughout my app -- what's the full v2 migration for both?
 **from/to version**: 1.10 → 2.0
 
@@ -447,7 +449,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## natural_language (6 queries)
 
-### `q_nl_01`
+### `q_nl_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: How do I turn a model instance into a plain dictionary now?
 **from/to version**: 1.10 → 2.0
 
@@ -462,7 +464,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_nl_02`
+### `q_nl_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What's the new way to build a model instance while skipping validation?
 **from/to version**: 1.10 → 2.0
 
@@ -476,7 +478,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_nl_03`
+### `q_nl_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: How do I validate a plain dict into a model object now?
 **from/to version**: 1.10 → 2.0
 
@@ -491,7 +493,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_nl_04`
+### `q_nl_04` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: What's the current recommended way to write a field-level validator function?
 **from/to version**: 1.10 → 2.0
 
@@ -506,7 +508,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_nl_05`
+### `q_nl_05` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: How can I make a copy of a model instance in the new version?
 **from/to version**: 1.10 → 2.0
 
@@ -520,7 +522,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_nl_06`
+### `q_nl_06` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: How do I resolve forward-referenced types after all my models are defined?
 **from/to version**: 1.10 → 2.0
 
@@ -536,8 +538,8 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## negative ⚠️ (5 queries)
 
-### `q_neg_01`
-**Query**: Does `BaseModel` still exist as the main way to define a schema in pydantic v2?
+### `q_neg_01` — **evaluation_scope=stability, excluded from core Recall@K aggregate**
+**Query**: Is subclassing `BaseModel` still the primary way to define a schema in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**: _(none — negative query)_
@@ -551,8 +553,8 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_neg_02`
-**Query**: If I explicitly set a default value with `Field(default=...)`, does that field still work the same way in pydantic v2?
+### `q_neg_02` — **evaluation_scope=stability, excluded from core Recall@K aggregate**
+**Query**: Does a field given an explicit default value, such as `Field(default=None)`, still behave the same way in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**: _(none — negative query)_
@@ -566,7 +568,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_neg_03`
+### `q_neg_03` — **evaluation_scope=stability, excluded from core Recall@K aggregate**
 **Query**: Is pydantic v2 still installed with `pip install pydantic`?
 **from/to version**: 1.10 → 2.0
 
@@ -581,7 +583,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_neg_04`
+### `q_neg_04` — **evaluation_scope=stability, excluded from core Recall@K aggregate**
 **Query**: Can a `BaseModel` field still be typed as another `BaseModel` subclass (nested model composition) in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -596,7 +598,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_neg_05`
+### `q_neg_05` — **evaluation_scope=stability, excluded from core Recall@K aggregate**
 **Query**: Do I still access individual field values as plain attributes (e.g. `model.field_name`) in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
@@ -613,7 +615,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## single_change (8 queries)
 
-### `q_single_01`
+### `q_single_01` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I'm on pydantic 1.10 and use `allow_mutation` in my model config -- what do I change for v2?
 **from/to version**: 1.10 → 2.0
 
@@ -627,7 +629,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_02`
+### `q_single_02` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My code subclasses `GenericModel` for generic pydantic models -- how do I migrate this to v2?
 **from/to version**: 1.10 → 2.0
 
@@ -642,7 +644,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_03`
+### `q_single_03` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I use `ConstrainedStr` for constrained string fields -- what's the v2 migration path?
 **from/to version**: 1.10 → 2.0
 
@@ -656,7 +658,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_04`
+### `q_single_04` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: Was `pydantic.stricturl` removed in v2?
 **from/to version**: 1.10 → 2.0
 
@@ -670,7 +672,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_05`
+### `q_single_05` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I have type hints using `pydantic.NoneStr` -- how do I migrate to v2?
 **from/to version**: 1.10 → 2.0
 
@@ -684,7 +686,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_06`
+### `q_single_06` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I call `BaseModel.parse_file()` to load models from disk -- what's the v2 path?
 **from/to version**: 1.10 → 2.0
 
@@ -698,7 +700,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_07`
+### `q_single_07` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: My ORM integration relies on `BaseModel.from_orm()` -- how do I migrate it to v2?
 **from/to version**: 1.10 → 2.0
 
@@ -712,7 +714,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ---
 
-### `q_single_08`
+### `q_single_08` — **evaluation_scope=change_retrieval, excluded from core Recall@K aggregate**
 **Query**: I generate JSON schemas with `BaseModel.schema()`. What should I use in v2?
 **from/to version**: 1.10 → 2.0
 

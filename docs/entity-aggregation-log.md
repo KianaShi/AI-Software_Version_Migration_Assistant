@@ -1019,3 +1019,92 @@ plus 3 new regression tests.
 **Gold set status: corrected twice now, self-consistent, re-verified --
 still not declared v1.** Waiting on your final pass over checklist v3
 and `deprecated_action_audit.md` before that decision, exactly as before.
+
+## Stage 8A.2 — Scope split, gold set metadata, final wording pass
+
+You reviewed checklist v3 and confirmed the content fixes were now
+correct, but asked for four more structural/scope/wording changes before
+you'd consider re-running the benchmark as the real baseline. You were
+explicit up front: whatever Dense/BM25/Hybrid come out to after these
+four, you won't keep revising gold based on score. Baseline: commit
+`d549883`.
+
+### 1-2. Three-way `evaluation_scope`, 42-query core, gold set metadata
+
+Split `evaluation_scope` from binary (`retrieval`/`query_planner`) into
+three values: `change_retrieval` (42 queries -- the core aggregate),
+`stability` (the 5 negatives -- `required_change_ids` is always
+vacuously empty, so change-level Recall@K is trivially 1.0 for them
+regardless of retrieval quality, which was quietly propping up the
+Stage 8A.1 47-query aggregate with 5 free 1.0s that measured nothing),
+and `query_planner` (unchanged, `q_amb_01`). `run_pydantic_benchmark.py`
+now filters to `change_retrieval` for the core aggregate/per-type/CSV
+and reports `stability` and `query_planner` in two separate labeled
+sections instead of one combined "scoped out" bucket.
+
+Added a `metadata` block to the gold JSON itself (previously a bare
+array; now `{"metadata": {...}, "queries": [...]}`) --
+`name: "Pydantic Gold Set v1"`, `migration_scope: "1.10.x -> 2.x"`,
+`review_revision: 3`, `status: "pending_freeze"`, `source_commit: null`.
+`status`/`source_commit` are deliberately left unset here: this script
+never declares the gold set frozen itself, and `source_commit` has an
+inherent chicken-and-egg problem (the commit that introduces a value
+can't contain its own hash) -- both get filled in only at the actual
+freeze moment, a separate explicit action, exactly matching your own
+stated pipeline (commit → human freeze, not the same step). Updated all
+four scripts that read the gold JSON (`run_pydantic_benchmark.py`,
+`generate_gold_review_checklist.py`, `diagnose_failed_queries.py`,
+plus the generator itself) for the new `{"metadata", "queries"}` shape.
+
+### 3. Wording tightened, semantics clarified
+
+`q_neg_01`/`q_neg_02` reworded to mirror their stability evidence text
+closely (`"still exist as the main way"` → `"still the primary way"`,
+`"still work the same way"` → `"still behave the same way"`) rather than
+a looser paraphrase that technically claimed slightly more than the
+evidence states.
+
+Added a "Field semantics" section to `deprecated_action_audit.md`:
+`replacement_symbol` names what to call, not a guarantee the migration
+is purely mechanical -- `BaseModel.from_orm` → `model_validate` is
+correct as a pointer, but the complete action also requires enabling
+`from_attributes` on `model_config` first, which lives in the evidence
+`raw_text`, not in the field itself. Documented so a future consumer
+(human or LLM) doesn't treat `replacement_symbol` alone as "the entire
+diff."
+
+### Rebuild, tests, re-run
+
+Full suite: **150 passed** (no new tests this round -- purely structural/
+scope/wording changes, no new extraction behavior to lock in). Same 5
+pre-existing failures, untouched.
+
+Gold set regenerated: 48 queries, `evaluation_scope` distribution
+42/5/1 (`change_retrieval`/`stability`/`query_planner`) exactly as
+designed. Benchmark re-run, core aggregate now over 42 queries (the 5
+trivially-1.0 negatives no longer inflate it):
+
+| | Dense | BM25 | Hybrid | Hybrid+vf |
+|---|---|---|---|---|
+| Recall@5 | 0.964 | 0.810 | 0.952 | 0.929 |
+| MRR | 0.889 | 0.766 | 0.875 | 0.863 |
+
+Only 2 of 42 queries remain below Recall@5=1.0 under Hybrid (`q_nl_02`
+fails under every mode, `q_nl_03` only under Hybrid) -- both
+re-classified RANKING with the same pool-size-consistent methodology
+from Stage 8A.1. No new failure categories surfaced; this round changed
+scope/wording/metadata, not facts, so no new content-level findings were
+expected and none appeared.
+
+**Files modified**: `scripts/generate_pydantic_gold_set.py` (evaluation_scope
+rename+split, `GOLD_METADATA`, wording), `scripts/run_pydantic_benchmark.py`
+(metadata-aware `load_gold()`, 3-way scope split, separate reporting),
+`scripts/generate_gold_review_checklist.py` (metadata-aware loading,
+header), `scripts/diagnose_failed_queries.py` (metadata-aware loading),
+`src/retrieval/evaluation.py` (`evaluation_scope` default renamed),
+`data/gold/deprecated_action_audit.md` (semantics note), README.
+
+**Gold set status: corrected three times now, self-consistent, matches
+the numbers you said you'd accept regardless of which retriever wins.**
+Still not declared frozen -- per your own pipeline, that's the next,
+separate step, on your side.

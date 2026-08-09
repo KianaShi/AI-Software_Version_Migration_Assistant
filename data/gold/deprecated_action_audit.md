@@ -1,4 +1,4 @@
-# Stage 8A / 8A.1 Audit: deprecated-only vs. actionable migration facts
+# Stage 8A / 8A.1 / 8A.2 Audit: deprecated-only vs. actionable migration facts
 
 Systematic check of every `DEPRECATED`/`MOVED`/`REMOVED` change record for
 cases where the gold set said only "X is deprecated/moved/removed"
@@ -8,14 +8,30 @@ evidence supported a clearer one. `REPLACEMENT`, `SIGNATURE_CHANGED`, and
 require a `replacement_symbol` or self-describe a behavior change, not a
 compliance-only status.
 
-Two ways a record counts as "has an action": a `replacement_symbol`
-(clean symbol → symbol rename, e.g. `parse_obj` → `model_validate`) or,
-added in Stage 8A.1, a free-text `migration_action_text` for
-recommendations that aren't a clean symbol swap (e.g. "use dicts
-instead", "subclass `BaseModel` and `Generic` directly instead"). Forcing
-the latter into `replacement_symbol` would misrepresent them as renames
-they aren't -- `migration_action_text` exists specifically so a real
-action isn't dropped just because it doesn't fit that shape.
+## Field semantics (Stage 8A.2 clarification)
+
+Two ways a record counts as "has an action", and they are **not
+interchangeable**:
+
+- **`replacement_symbol`**: the single symbol name to call/import
+  instead. This is a naming pointer, not a guarantee that the migration
+  is a purely mechanical find-and-replace. `BaseModel.from_orm` →
+  `replacement_symbol = BaseModel.model_validate` is correct, but the
+  *complete* action also requires enabling `from_attributes` on
+  `model_config` first -- that extra step lives in the evidence's
+  `raw_text`, not in `replacement_symbol` itself. Treat
+  `replacement_symbol` as "what to call", not "the entire diff."
+- **`migration_action_text`** (added Stage 8A.1): free text for
+  recommendations that aren't a clean symbol swap at all (e.g. "use
+  dicts instead", "subclass `BaseModel` and `Generic` directly instead").
+  Forcing these into `replacement_symbol` would misrepresent them as
+  renames they aren't.
+
+A record can have `replacement_symbol` alone, `migration_action_text`
+alone, or (rarely) neither with the surrounding evidence still containing
+extra detail a human/LLM consumer would need to read in full -- callers
+that need the *complete* migration action should read the evidence
+`raw_text`, not assume either field alone is sufficient.
 
 | Symbol | Type | Action | Source |
 |---|---|---|---|

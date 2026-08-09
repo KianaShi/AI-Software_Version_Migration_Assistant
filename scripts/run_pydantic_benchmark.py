@@ -24,9 +24,10 @@ TOP_K = 10
 MODES = ["dense", "sparse", "hybrid", "hybrid_version_filtered"]
 
 
-def load_gold() -> list[GoldQuery]:
-    records = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
-    return [
+def load_gold() -> tuple[list[GoldQuery], dict]:
+    data = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    metadata = data["metadata"]
+    queries = [
         GoldQuery(
             query_id=r["query_id"],
             query_text=r["query_text"],
@@ -35,10 +36,11 @@ def load_gold() -> list[GoldQuery]:
             to_version=r.get("to_version"),
             required_change_ids=r["required_change_ids"],
             relevant_evidence_ids=r["relevant_evidence_ids"],
-            evaluation_scope=r.get("evaluation_scope", "retrieval"),
+            evaluation_scope=r.get("evaluation_scope", "change_retrieval"),
         )
-        for r in records
+        for r in data["queries"]
     ]
+    return queries, metadata
 
 
 def build_resolvers(
@@ -109,8 +111,9 @@ def failure_quadrant(gold: list[GoldQuery], change_results: dict[str, list]) -> 
     """
     dense-only-succeeds / sparse-only-succeeds / hybrid-fixes-both /
     all-fail, based on change-level Recall@5 (== 1.0 counts as success).
-    Negative queries are excluded (Recall@5 is trivially 1.0 for them
-    regardless of retrieval quality -- see module note in the README).
+    `gold` here is already filtered to evaluation_scope == "change_retrieval"
+    by the caller, so stability (negative) and query_planner queries never
+    reach this function.
     """
     by_id = {q.query_id: q for q in gold}
     dense_r = {r.query_id: r.recall_at_5 for r in change_results["dense"]}
@@ -124,10 +127,7 @@ def failure_quadrant(gold: list[GoldQuery], change_results: dict[str, list]) -> 
         "all_fail": [],
     }
 
-    for query_id, query in by_id.items():
-        if query.query_type == "negative":
-            continue
-
+    for query_id in by_id:
         d, s, h = dense_r[query_id] >= 0.999, sparse_r[query_id] >= 0.999, hybrid_r[query_id] >= 0.999
 
         if d and not s:
@@ -143,9 +143,13 @@ def failure_quadrant(gold: list[GoldQuery], change_results: dict[str, list]) -> 
 
 
 def main() -> None:
-    all_gold = load_gold()
-    gold = [q for q in all_gold if q.evaluation_scope == "retrieval"]
-    scoped_out = [q for q in all_gold if q.evaluation_scope != "retrieval"]
+    all_gold, metadata = load_gold()
+    gold = [q for q in all_gold if q.evaluation_scope == "change_retrieval"]
+    stability = [q for q in all_gold if q.evaluation_scope == "stability"]
+    query_planner = [q for q in all_gold if q.evaluation_scope == "query_planner"]
+    scoped_out = stability + query_planner
+    print(f"{metadata['name']} (review_revision={metadata['review_revision']}, "
+          f"status={metadata['status']}, scope={metadata['migration_scope']})\n")
     chunks, conn, _stats = run_pipeline()
     collection, sparse_index = build_indices(chunks)
     chunks_by_id = {c.chunk_id: c for c in chunks}
@@ -246,16 +250,24 @@ def main() -> None:
     for name, ids in quadrants.items():
         print(f"{name}: {len(ids)}  {ids}")
 
-    print(f"\nCore retrieval aggregate scored over {len(gold)} queries "
-          f"(evaluation_scope == 'retrieval'); {len(scoped_out)} excluded: "
-          f"{[q.query_id for q in scoped_out]}")
+    print(f"\nCore change_retrieval aggregate scored over {len(gold)} queries; "
+          f"{len(stability)} stability + {len(query_planner)} query_planner excluded")
 
-    if scoped_out:
-        print("\n=== Excluded from core aggregate (evaluation_scope != 'retrieval') ===")
-        print("Reported separately -- required-id set is an editorial judgment call, not a single retrieval ground truth.")
+    if stability:
+        print("\n=== stability scope (negatives, excluded from core aggregate) ===")
+        print("required_change_ids is always empty here, so change-level Recall@K is trivially 1.0 regardless of retrieval quality -- not a meaningful signal for the core aggregate.")
         for mode in MODES:
             for r in scoped_out_results[mode]:
-                print(f"  {mode:26s} {r.query_id}: R@5={r.recall_at_5:.3f} R@10={r.recall_at_10:.3f} MRR={r.mrr:.3f}")
+                if r.query_id in {q.query_id for q in stability}:
+                    print(f"  {mode:26s} {r.query_id}: R@5={r.recall_at_5:.3f}")
+
+    if query_planner:
+        print("\n=== query_planner scope (excluded from core aggregate) ===")
+        print("required-id set is an editorial judgment call, not a single retrieval ground truth.")
+        for mode in MODES:
+            for r in scoped_out_results[mode]:
+                if r.query_id in {q.query_id for q in query_planner}:
+                    print(f"  {mode:26s} {r.query_id}: R@5={r.recall_at_5:.3f} R@10={r.recall_at_10:.3f} MRR={r.mrr:.3f}")
 
     print(f"\nCSV written to {OUTPUT_DIR}/")
 
