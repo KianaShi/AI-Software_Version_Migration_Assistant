@@ -21,3 +21,13 @@ Field-level and model-level validation in v2 use the `@field_validator` and `@mo
 ## Equality and Defaults
 
 Two v2 model instances are only equal if they are the exact same type and have matching field values -- comparing a model to a differently-typed model with identical field values no longer returns `True` the way it sometimes did in v1. Similarly, a field typed `Optional[str]` with no explicit default is a required field in v2; it will not silently default to `None`.
+
+## Stable in v2
+
+The following are unchanged between v1 and v2. Called out explicitly since a migration assistant needs to avoid over-warning about things that didn't actually change, not just list what did. One bullet per fact, same as the changed-facts sections, so each stays independently retrievable instead of diluting the others.
+
+- Subclassing `BaseModel` remains the primary way to define a schema in pydantic v2, the same as in v1.
+- A field given an explicit default value, such as `Field(default=None)`, continues to behave the same way in v2; only fields with no explicit default changed.
+- The core `pydantic` package is still installed with `pip install pydantic` in v2 -- only optional add-ons like settings management and extra types moved to separate packages.
+- Nested model composition, typing a field as another `BaseModel` subclass, is still supported in v2.
+- Custom field-level validation is still supported in v2 via `@field_validator`; only the decorator name changed from v1's `@validator`.

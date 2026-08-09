@@ -571,3 +571,321 @@ a corpus spanning multiple versions with content that actually
 contradicts across versions (e.g. a symbol that means different things in
 1.x vs 2.x vs 3.x) -- noted here as a corpus requirement for whenever
 that ablation is worth running for real, not committed to as a next step.
+
+## Stage 8A (continued) — Gold Set Remediation
+
+Baselines for this phase: `8e540dc` (Stage 7 benchmark), `60002e8`
+(Stage 8A diagnosis/checklist v1). You reviewed the checklist against the
+official pydantic migration guide yourself and found 4 factual/
+completeness problems and 4 taxonomy/schema problems. This section is
+the remediation of all of those, plus the systematic audit and downstream
+impact review you asked to accompany them. Explicit scope boundary
+observed throughout: no reranker, query rewrite, context expansion, new
+embedding model, Late Chunking, LLM fallback, or full SemVer engine --
+this stage is about making the gold set trustworthy, not improving
+retrieval scores, and several scores did in fact go down as a direct
+result, which is treated as correct behavior, not a regression to fix.
+
+### 1. Factual corrections
+
+**1A -- `q_dep_04`**: `migration_guide.md` said `pydantic.utils.to_camel`
+moved to `pydantic.alias_generators.to_camel`. Real mapping (verified
+against the official migration guide table): `utils.to_camel` →
+`alias_generators.to_pascal`, and a *separate* function,
+`utils.to_lower_camel` → `alias_generators.to_camel`. Corpus corrected to
+state both real facts as two bullets. The query text didn't need to
+change (it still asks about `utils.to_camel`); only the corpus fact did,
+so the gold set's `required_change_ids`/`replacement_symbol` corrected
+automatically on rebuild -- nothing hand-patched.
+
+**1B -- `q_single_08`**: corpus said `BaseModel.json_schema()` was
+replaced by `model_json_schema()`. `json_schema()` was never a real v1
+method; the real v1 API is `BaseModel.schema()` (returns a dict).
+Corrected the corpus fact and the query text ("I generate JSON schemas
+with `BaseModel.schema()`. What should I use in v2?"), and updated the
+gold generator's symbol reference from `BaseModel.json_schema` to
+`BaseModel.schema`.
+
+Both regenerated through the real pipeline (`build_pydantic_benchmark_corpus.py`
+→ `generate_pydantic_gold_set.py`), not hand-patched -- change_id/evidence_id
+are content hashes, so the corpus edit alone produces new, correct ids on
+rebuild.
+
+### 2. Migration-action completeness (status-only → actionable)
+
+Principle applied: a `DEPRECATED`/`MOVED` fact that only says "X is
+deprecated" without a `replacement_symbol` is incomplete for a *migration
+assistant* even if factually true -- the corpus already had a clearer
+recommended action available in two of three cases, and a better one
+than "the deprecated import path" in the third.
+
+- **2A `parse_obj_as`**: was `MOVED` → `pydantic.deprecated.tools.parse_obj_as`
+  (a namespace whose own name says "deprecated" -- not a real recommended
+  migration). Corrected to `DEPRECATED` → `TypeAdapter` (the real
+  recommended replacement per the migration guide), with the legacy
+  import path kept as a secondary sentence in the same corpus bullet
+  (retrievable, but not the primary action).
+- **2B `BaseModel.parse_file`**: was `DEPRECATED` with `replacement_symbol=None`
+  ("no direct v2 replacement"). Corrected to `DEPRECATED` →
+  `BaseModel.model_validate`, with the corpus stating the actual
+  recommended action ("load the file yourself and pass the parsed data
+  in"). This also incidentally fixed the version-precision artifact
+  noted below (§ version precision) -- the old phrasing's bare "v2"
+  mention is gone.
+- **2C `BaseModel.from_orm`**: was `DEPRECATED` with `replacement_symbol=None`
+  (the old phrasing -- "deprecated in favor of setting `from_attributes`
+  on `model_config`" -- had a word between the connector and the target
+  symbol, so the tight-phrasing replacement-pattern regex never captured
+  a target). Corrected to `DEPRECATED` → `BaseModel.model_validate`, with
+  the corpus stating the full action ("set `from_attributes` to `True`
+  on `model_config` first").
+
+**2D -- systematic audit of all `DEPRECATED`/`MOVED` records** (not just
+the three you flagged): queried every record of those two change types
+in the rebuilt DB (11 total) for `replacement_symbol IS NULL`. Result: **0
+remaining** after the three fixes above (the other 8 -- `@validator`,
+`@root_validator`, `parse_raw`, and 5 `MOVED` import-path facts -- already
+had a real action from Stage 7). Full table with before/after and
+reasoning: `data/gold/deprecated_action_audit.md`. No other change_type
+(`REPLACEMENT`, `REMOVED`, `SIGNATURE_CHANGED`, `BEHAVIOR_CHANGED`) has
+this "deprecated with nothing to do" ambiguity by construction --
+`REMOVED` genuinely has nothing to replace it with, and the rest already
+require a target symbol or self-describe a behavior.
+
+### 3-4. Taxonomy corrections
+
+Renamed `multi_hop` → `multi_change`, `single_hop` → `single_change`:
+this benchmark covers exactly one version transition (1.10.x → 2.x), so
+"hop" language implying a chain of sequential transitions (v2→v3→v4→v5)
+was never actually being tested -- these queries combine multiple
+changes that co-occur *within* the one transition. True version-path
+multi-hop stays explicitly future work, and nothing in the README or
+benchmark code claims to test it now.
+
+Split `ambiguous_alias` (4 queries): `q_amb_01` ("What happened to
+`parse`?", 3 required changes, genuinely under-specified) keeps a
+distinct category, renamed `underspecified_symbol`. `q_amb_02`/`03`/`04`
+(each asking about one specific old name, not actually multi-candidate)
+renamed `legacy_symbol`. Scope, as instructed: rename only, no broader
+taxonomy/schema redesign (e.g. the `query_style`/`change_category`/
+`reasoning_pattern` facet split you sketched as a longer-term idea for
+`q_config_03`/`q_behav_03` sharing a change_id -- noted as a real
+observation, not implemented; that sharing itself is not a bug, per your
+own conclusion, since both queries correctly point at the same real
+`Field()` fact).
+
+Updated: `generate_pydantic_gold_set.py` (taxonomy values),
+`generate_gold_review_checklist.py` (`FLAGGED_TYPES`), README (table
+headers, taxonomy explanation, roadmap checklist wording).
+
+### 5-6. `ChangeType.BEHAVIOR_CHANGED`
+
+The enum value already existed (`src/entities/models.py`, since Stage 2/3)
+-- it just wasn't being reached, because `BaseModel.__eq__` and the
+`dataclasses` tuple-input fact were phrased with keywords
+(`change_extraction.py`'s `_CHANGE_TYPE_KEYWORDS`) that route to
+`SIGNATURE_CHANGED` ("now requires...", "no longer accepts..."). Fixed by
+rephrasing both corpus sentences to use the existing "behavior changed"
+keyword instead ("`BaseModel.__eq__` behavior changed in v2.0.0: two
+instances only compare equal when..."; "`pydantic.dataclasses` validation
+behavior changed in v2.0.0: tuples are no longer accepted..." -- note
+"accepted", not "accepts", so the SIGNATURE_CHANGED keyword correctly
+doesn't also fire). No change to the keyword table itself, since that
+table is shared with `Field()`'s "no longer accepts" fact, which should
+stay `SIGNATURE_CHANGED` -- a global keyword remap would have
+reclassified that too, which wasn't asked for and isn't obviously right.
+
+**Downstream aggregation audit** (required before treating this as done):
+searched every `change_type`/`ChangeType` usage in `src/aggregation/`.
+Finding: **no code changes were needed**. `constraints.py`'s
+`check_non_overlapping_change_semantics` and `pairwise.py`'s
+`change_type_match` signal both operate by pure equality / whitelist-
+membership (`config.COMPATIBLE_CHANGE_TYPE_PAIRS`, empty by default) --
+neither has any per-type branch anywhere, by design (this is exactly why
+`COMPATIBLE_CHANGE_TYPE_PAIRS` exists as an explicit, reviewed, empty-by-
+default whitelist: so a new `ChangeType` value is safe by construction,
+never silently compatible with anything else). `blocking.py` doesn't
+reference `change_type` at all. Confirmed with two new regression tests
+(`test_cannot_link.py`, `test_pairwise_resolution.py`): a `BEHAVIOR_CHANGED`
+claim and a `SIGNATURE_CHANGED` claim for the same symbol still
+cannot-link by default (conservative, as required), and two
+`BEHAVIOR_CHANGED` claims still score as a matching pair in pairwise
+scoring, same as any other equal-type pair.
+
+### 7. Stability-evidence feasibility (answered before implementing)
+
+1. *Can `Evidence` represent stability without structural change?* No,
+   not cleanly -- `Evidence` is Level-1-extraction output (an
+   `UnresolvedChange` claim), and a stability fact isn't a change claim,
+   so forcing it through that pipeline would need new extraction logic
+   (out of scope).
+2. *Does the corpus already have enough v2-stable content?* No -- Stage 7's
+   corpus was 100% breaking-change facts. Added a new "Stable in v2"
+   section to `concepts.md` (5 real, verifiable facts, one bullet each
+   -- same per-fact chunking discipline as the changed-facts sections, so
+   they don't dilute each other the way the pre-fix `migration_guide.md`
+   sections did).
+3. *Can `GoldQuery` support `stability_evidence_ids` without changing
+   extraction behavior?* Yes -- added as an optional field (default `[]`)
+   resolved to **chunk_ids**, not evidence_ids: stability facts never go
+   through Level 1 extraction, so there's no Evidence record to point at,
+   but chunking already runs independently and needed no changes.
+4. *Which negatives are narrow/verifiable?* `q_neg_01` (BaseModel primary
+   class), `q_neg_02` (explicit-default field), `q_neg_03` (pip install)
+   were already narrow -- kept, just given real stability evidence.
+5. *Which are too broad?* `q_neg_04` ("nested BaseModel classes still
+   work the same way?") and `q_neg_05` ("Enum field definitions need any
+   changes?") -- "same way" and "any changes" aren't provable
+   propositions, and the v2.0 release notes (Stage 7 research) actually
+   mention *some* internal Enum-handling changes, so "no change" wasn't
+   even safely true for `q_neg_05` as originally worded. Rewritten to
+   narrow, provable claims: `q_neg_04` → "can a `BaseModel` field still
+   be typed as another `BaseModel` subclass?" (existence, not "every
+   way"); `q_neg_05` replaced entirely with "is custom field-level
+   validation still supported via `@field_validator`?" (a claim the
+   corpus can actually back).
+
+Conclusion: cheap and structural-change-free by construction (chunk_id
+reference, no extraction pipeline touched) -- implemented per your own
+"if cheap, implement" branch. All 5 negative queries now carry a real
+`stability_evidence_ids` chunk reference; verified via the gold-set
+generator's own consistency check (`missing_stability_facts`), which
+would hard-fail the generation run if any text didn't match a real chunk
+exactly.
+
+### 8. Version precision (minimal, not full SemVer)
+
+Added `VersionPrecision` (`MAJOR`/`MINOR`/`PATCH`) and a `precision`
+field on `VersionMention` in `version_normalization.py`, derived from the
+number of numeric components actually present in the source text ("v2"
+→ MAJOR, "v2.0" → MINOR, "v2.0.0" → PATCH; "1.2.x" → MINOR, since the
+wildcard "x" isn't a real patch number). This is purely additive to the
+extraction layer -- no ordering/comparison operators defined over it, and
+`intervals_overlap()` in `retrieval/version_filter.py` is deliberately
+untouched (padding mismatched-length version-key tuples for *comparison*
+is a different concern from what precision a claim *asserts*, and that
+padding fix already shipped in Stage 7). Not propagated into the
+persisted `ChangeRecord` schema this pass -- that would be a second
+schema migration with its own blast radius, recorded here as deferred,
+not silently skipped.
+
+The concrete complaint (`BaseModel.parse_file`'s `version_to="2"` sitting
+inconsistently next to siblings' `"2.0.0"`) is separately resolved as a
+side effect of § 2B's corpus rewrite (the bare "v2" phrasing that caused
+it is gone). Full SemVer interval algebra, prerelease ordering, wildcard
+ranges, and `[2.0.0, 3.0.0)`-style representation are explicitly deferred,
+per your scope instruction -- recorded as technical debt, not implemented.
+
+### 10-11. Rebuild and full test suite
+
+Rebuilt from scratch (`build_pydantic_benchmark_corpus.py`): 3 documents
+→ 76 chunks (was 70; +6 for the new "Stable in v2" bullets and the split
+to_camel/to_lower_camel fact) → 34 `UnresolvedChange` claims (was 33) →
+27 `ChangeRecord`s (was 26; +1 net) → 0 cannot-link vetoes. Regenerated
+the gold set (`generate_pydantic_gold_set.py`) against the fresh DB --
+all 48 queries resolved with zero missing symbols and zero missing
+stability facts (the generator hard-fails on either, so this is a real
+verification, not an assumption).
+
+Full suite: **147 passed** (up from 140; +7 Stage-8A regression tests:
+2 `BEHAVIOR_CHANGED` cannot-link/pairwise tests, 1 `MOVED`-pattern
+extraction test, 4 `VersionPrecision` tests), same **5 pre-existing**
+`test_retriever.py`/`test_vector_store.py` failures, untouched as
+instructed.
+
+### 12-13. Benchmark re-run and failure diagnosis vs. `8e540dc`
+
+See README's "Benchmark Results" section for the full tables (change-
+level and evidence-level, all four modes, per-query-type slice). Summary:
+
+| | Dense R@5 | BM25 R@5 | Hybrid R@5 |
+|---|---|---|---|
+| `8e540dc` (pre-correction) | 0.927 | 0.844 | 0.958 |
+| post-remediation | 0.948 | 0.844 | 0.938 |
+
+Hybrid's Recall@5 went **down** (0.958 → 0.938) and Dense's went up
+slightly; Hybrid no longer has the top Recall@5 in this run (though it
+still leads on MRR/nDCG@5: 0.799/0.808 vs Dense's 0.786/0.793). Per your
+own review principle (§9E: correct labels over attractive scores) this is
+reported as-is, not chased. The mechanism is examined in README's new
+"Hybrid does not strictly dominate Dense" section: `q_nl_03` is the clean
+example -- Dense finds `BaseModel.parse_obj` at rank 4 (top-5 hit) on its
+own, BM25 never finds it, and the *actual* RRF fusion pool the benchmark
+uses (top_k=10 → 40 fused candidates, reconstructed exactly for this
+diagnosis) ranks it 11th. RRF sums per-list rank credit; a chunk BM25
+never touches gets zero credit from that side and can be out-accumulated
+by chunks both retrievers rank only moderately.
+
+**Methodology fix caught during this re-diagnosis, worth recording**: an
+earlier draft of the failure-diagnosis script called `retrieve_hybrid()`
+with `top_k=50` to "look deeper," not realizing `retrieve_hybrid`'s RRF
+candidate pool (`fetch_k = top_k * 4`) scales with whatever `top_k` the
+caller passes -- so a `top_k=50` call fuses a *different, larger* pool
+than the real benchmark's `top_k=10` call, and can produce a materially
+different fused ranking for the same query (confirmed concretely:
+`q_multi_02` showed a rank-6/7 near-miss under the wide diagnostic pool
+but is a clean full pass, recall@5=1.0 on every mode, under the real
+benchmark's actual pool -- the wide-pool number was simply wrong for
+answering "did the real benchmark call fail"). Fixed by making
+`scripts/diagnose_failed_queries.py` (a) read
+`data/benchmark/per_query_results.csv` as the authoritative source for
+*which* queries fail, never re-derive it independently, and (b)
+reconstruct Hybrid's rank at the *exact* fetch_k the real benchmark used,
+not a bigger ad hoc pool. Dense/sparse ranks don't have this problem
+(no fusion, so requesting more results doesn't reorder ones already
+returned).
+
+**Failure classification, authoritative** (3 non-negative queries with
+real Hybrid Recall@5 < 1.0):
+
+| Query | Dense rank | Sparse rank | Hybrid rank (real pool=40) | Class |
+|---|---|---|---|---|
+| `q_nl_02` | 20/50 | not found | 35/40 | RANKING |
+| `q_nl_03` | 4/50 (top-5!) | not found | 11/40 | RANKING |
+| `q_amb_01` | 23-25/50 (best of 3) | not found | 30-33/40 | UNDERSPECIFIED_SYMBOL |
+
+No CORPUS_GAP, EXTRACTION_GAP, LABEL_ERROR, or VERSION_FILTER_ERROR among
+these three -- all three facts are demonstrably extracted and indexed
+(Dense finds all of them within the top 25 of 76 chunks), the labels were
+specifically re-verified this stage, and `hybrid_version_filtered`'s
+numbers track plain `hybrid` closely throughout with no traceable
+distortion. Per your instruction, not defaulting any of these to "needs
+agentic decomposition" -- two are RANKING (reranker candidate), one is
+UNDERSPECIFIED_SYMBOL (context/symbol-expansion candidate), and none are
+addressed in Stage 8A itself.
+
+### 14. Review checklist v2
+
+Regenerated `data/gold/pydantic_gold_review_checklist.md` against the
+corrected live corpus: adds an explicit "Migration action: use `X`" line
+per required change (or a note that it's a status-only fact with a
+pointer to `deprecated_action_audit.md` when no action exists), a
+`stability_evidence_ids` section for negative queries, and updated
+`FLAGGED_TYPES` (`multi_change` / `underspecified_symbol` /
+`behavioral_change` / `negative`). Not auto-declaring anything frozen --
+that stays your call.
+
+### 15. Documentation
+
+README's Benchmark Results section rewritten with the corrected tables,
+the "Hybrid does not strictly dominate Dense" finding, the corrected
+failure classification table, an explicit "`multi_change` is not
+version-path multi-hop" disclaimer, and the version-filter/config-change/
+behavioral-change limitation notes carried forward accurately. Project
+Status checklist updated (Stage 8A items marked done, gold-set sign-off
+moved to "in progress" rather than implied-complete). This log entry is
+that documentation's counterpart for implementation-level detail.
+
+### Not done (explicitly out of scope, confirmed against your exclusion list)
+
+Reranker, query decomposition/rewrite/context expansion, LangGraph,
+adaptive retrieval, LLM extraction fallback, Late Chunking, new embedding
+model, Qdrant migration, full SemVer interval engine, new stability-
+extraction pipeline, executable code migration, automatic patch
+generation, the five pre-existing legacy retriever/vector-store test
+failures, and the `query_style`/`change_category`/`reasoning_pattern`
+facet redesign (recorded as a good idea for later, not built).
+
+**Gold set status: corrected, self-consistent, and re-verified against
+real pipeline output -- not yet declared v1.** Freeze remains your call,
+same as before this remediation pass.

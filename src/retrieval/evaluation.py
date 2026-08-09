@@ -36,6 +36,11 @@ class GoldQuery:
     to_version: str | None = None
     required_change_ids: list[str] = field(default_factory=list)
     relevant_evidence_ids: list[str] = field(default_factory=list)
+    # Stage 8A: chunk_ids (not evidence_ids -- stability facts don't go
+    # through Level 1 extraction, see docs/entity-aggregation-log.md
+    # Stage 8A feasibility note) backing a negative query's "nothing
+    # changed" claim. Optional/empty for non-negative queries.
+    stability_evidence_ids: list[str] = field(default_factory=list)
 
 
 @dataclass

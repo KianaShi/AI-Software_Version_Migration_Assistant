@@ -11,6 +11,18 @@ normalizes syntax (drop "v" prefix, drop ".x" wildcard suffix) -- it does
 not attempt full semver comparison/ordering, which downstream aggregation
 code doesn't currently need (constraints.py compares version strings for
 equality, not ordering).
+
+VersionPrecision (Stage 8A) records how specific the SOURCE text actually
+was -- "v2" is a MAJOR-precision claim, "v2.0" MINOR, "v2.0.0" PATCH --
+without manufacturing precision the source didn't state. This is
+deliberately the smallest useful representation, not a full SemVer
+interval engine: no ordering/comparison operators are defined over it,
+and intervals_overlap() in retrieval/version_filter.py is intentionally
+left unchanged (it already pads mismatched-length version-key tuples for
+comparison purposes, which is a different concern from what precision a
+claim asserts). Full semantic-interval representation, prerelease
+ordering, and wildcard ranges are explicitly out of scope here -- see
+docs/entity-aggregation-log.md Stage 8A for the reasoning.
 """
 
 
@@ -20,6 +32,26 @@ class VersionQualifier(str, Enum):
     RANGE = "RANGE"      # "1.2 to 2.0", "1.2 - 2.0"
 
 
+class VersionPrecision(str, Enum):
+    MAJOR = "MAJOR"  # "v2" -- only one component stated
+    MINOR = "MINOR"  # "v2.0" -- two components stated
+    PATCH = "PATCH"  # "v2.0.0" -- three or more components stated
+
+
+def _precision_of(normalized_token: str) -> str:
+    """
+    Component count of the NORMALIZED token (after ".x" wildcard
+    stripping, so "1.2.x" -- MINOR precision, the "x" isn't a real patch
+    number -- not PATCH).
+    """
+    parts = normalized_token.split(".")
+    if len(parts) <= 1:
+        return VersionPrecision.MAJOR.value
+    if len(parts) == 2:
+        return VersionPrecision.MINOR.value
+    return VersionPrecision.PATCH.value
+
+
 @dataclass
 class VersionMention:
     raw: str
@@ -27,6 +59,7 @@ class VersionMention:
     qualifier: str  # VersionQualifier value
     span: tuple[int, int]
     normalized_end: str | None = None  # only set for RANGE
+    precision: str | None = None  # VersionPrecision value, derived from `normalized`
 
 
 _VERSION_NUM = r"\d+(?:\.\d+)*(?:\.[xX])?"
@@ -72,13 +105,15 @@ def find_version_mentions(text: str) -> list[VersionMention]:
             span = match.span()
             if _overlaps(span):
                 continue
+            normalized = _normalize_token(match.group(1))
             mentions.append(
                 VersionMention(
                     raw=match.group(0),
-                    normalized=_normalize_token(match.group(1)),
+                    normalized=normalized,
                     normalized_end=_normalize_token(match.group(2)),
                     qualifier=VersionQualifier.RANGE.value,
                     span=span,
+                    precision=_precision_of(normalized),
                 )
             )
             claimed.append(span)
@@ -91,12 +126,14 @@ def find_version_mentions(text: str) -> list[VersionMention]:
             span = match.span()
             if _overlaps(span):
                 continue
+            normalized = _normalize_token(match.group(1))
             mentions.append(
                 VersionMention(
                     raw=match.group(0),
-                    normalized=_normalize_token(match.group(1)),
+                    normalized=normalized,
                     qualifier=qualifier.value,
                     span=span,
+                    precision=_precision_of(normalized),
                 )
             )
             claimed.append(span)
@@ -106,12 +143,14 @@ def find_version_mentions(text: str) -> list[VersionMention]:
             span = match.span()
             if _overlaps(span):
                 continue
+            normalized = _normalize_token(match.group(1))
             mentions.append(
                 VersionMention(
                     raw=match.group(0),
-                    normalized=_normalize_token(match.group(1)),
+                    normalized=normalized,
                     qualifier=VersionQualifier.EXACT.value,
                     span=span,
+                    precision=_precision_of(normalized),
                 )
             )
             claimed.append(span)

@@ -1,33 +1,70 @@
+import csv
 import json
 import sqlite3
 from pathlib import Path
 
 from scripts.build_pydantic_benchmark_corpus import build_indices, run_pipeline
-from src.retrieval.retrieval import retrieve_dense, retrieve_hybrid, retrieve_sparse
+from src.retrieval.dense_index import query_dense
+from src.retrieval.hybrid import reciprocal_rank_fusion
+from src.retrieval.retrieval import _FETCH_MULTIPLIER, retrieve_dense, retrieve_sparse
+from src.retrieval.sparse_index import query_sparse
 
 """
-Stage 8A diagnostic: for a given set of failing query_ids, find the rank
-at which each required change's supporting evidence/chunk actually
-appears under Dense / BM25 / Hybrid, at cutoffs 5/10/20/50. This is what
-separates a RANKING problem (right chunk is indexed, just scores too low
-for top-5) from a SEMANTIC_MISMATCH/CORPUS_GAP/EXTRACTION_GAP (the right
-chunk never surfaces at all, or never existed to begin with).
+Stage 8A diagnostic. Reads data/benchmark/per_query_results.csv (written
+by the real benchmark run, top_k=10) as the AUTHORITATIVE list of which
+queries fail -- do not recompute "which queries fail" independently.
+
+Important pool-size fix: retrieve_hybrid()'s RRF candidate pool
+(fetch_k = top_k * 4) scales with whatever top_k the caller passes, so a
+naive "call retrieve_hybrid(top_k=50) to see deeper ranks" changes the
+fusion pool itself and can show a DIFFERENT ranking than what the real
+benchmark (top_k=10 -> fetch_k=40) actually produced -- caught this
+empirically: q_multi_02 showed hybrid rank 6 under a top_k=50 pool but
+recall@5=1.0 (rank <=5) under the real top_k=10 pool. Dense and sparse
+ranks are pool-size-independent (no fusion, so requesting more results
+doesn't reorder the ones already returned) and are safe to inspect at any
+depth. Hybrid is reconstructed here at the EXACT fetch_k the real
+benchmark used (top_k=10 -> fetch_k=40), unfused-and-untruncated, so the
+reported rank is the real one, not an artifact of a bigger diagnostic pool.
 """
 
 GOLD_PATH = Path("data/gold/pydantic_gold_queries.json")
-CUTOFFS = [5, 10, 20, 50]
-FETCH_K = 50
+RESULTS_CSV = Path("data/benchmark/per_query_results.csv")
+BENCHMARK_TOP_K = 10  # must match scripts/run_pydantic_benchmark.py TOP_K
+CUTOFFS = [5, 10, 20]  # capped at BENCHMARK_TOP_K * _FETCH_MULTIPLIER (40)
 
 
-def rank_of_change(retrieved_chunk_ids: list[str], target_change_ids: set[str], chunk_to_change_ids: dict) -> int | None:
+def rank_of_change(retrieved_chunk_ids: list[str], target_change_id: str, chunk_to_change_ids: dict) -> int | None:
     for rank, chunk_id in enumerate(retrieved_chunk_ids, start=1):
-        if set(chunk_to_change_ids.get(chunk_id, [])) & target_change_ids:
+        if target_change_id in chunk_to_change_ids.get(chunk_id, []):
             return rank
     return None
 
 
-def main(query_ids: list[str]) -> None:
-    gold = {q["query_id"]: q for q in json.loads(GOLD_PATH.read_text(encoding="utf-8"))}
+def find_failing_query_ids() -> list[str]:
+    """Authoritative: any non-negative query with hybrid recall_at_5 < 1.0 in the real benchmark run."""
+    failing = []
+    with RESULTS_CSV.open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["retrieval_mode"] == "hybrid" and float(row["recall_at_5"]) < 1.0:
+                failing.append(row["query_id"])
+    return failing
+
+
+def hybrid_rank_at_benchmark_pool_size(query_text, collection, sparse_index, chunks_by_id, target_change_id, chunk_to_change_ids) -> int | None:
+    fetch_k = BENCHMARK_TOP_K * _FETCH_MULTIPLIER  # exactly what the real benchmark's retrieve_hybrid(top_k=10) uses internally
+    dense_raw = query_dense(collection, query_text, chunks_by_id, fetch_k=fetch_k)
+    sparse_raw = query_sparse(sparse_index, query_text, chunks_by_id, fetch_k=fetch_k)
+    fused = reciprocal_rank_fusion(
+        [[r.chunk.chunk_id for r in dense_raw], [r.chunk.chunk_id for r in sparse_raw]]
+    )
+    fused_ids = [chunk_id for chunk_id, _score in fused]
+    return rank_of_change(fused_ids, target_change_id, chunk_to_change_ids)
+
+
+def main() -> None:
+    gold_records = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    gold = {r["query_id"]: r for r in gold_records}
     chunks, conn, _ = run_pipeline()
     collection, sparse_index = build_indices(chunks)
     chunks_by_id = {c.chunk_id: c for c in chunks}
@@ -41,35 +78,42 @@ def main(query_ids: list[str]) -> None:
         ).fetchall()
         chunk_to_change_ids[chunk.chunk_id] = [row[0] for row in rows]
 
+    conn.row_factory = sqlite3.Row
     changes = {r["change_id"]: dict(r) for r in conn.execute("SELECT * FROM change_records")}
 
-    for query_id in query_ids:
+    failing_query_ids = find_failing_query_ids()
+    print(f"Non-negative queries with hybrid Recall@5 < 1.0 (from {RESULTS_CSV}): {failing_query_ids}\n")
+
+    for query_id in failing_query_ids:
         q = gold[query_id]
-        target_change_ids = set(q["required_change_ids"])
-        print(f"\n=== {query_id} | {q['query_text']} ===")
-        print("gold required changes:")
+        print(f"=== {query_id} | {q['query_text']} ===")
+        print(f"taxonomy: {q['query_type']}")
+
+        dense_full = retrieve_dense(collection, q["query_text"], chunks_by_id, top_k=50)
+        sparse_full = retrieve_sparse(sparse_index, q["query_text"], chunks_by_id, top_k=50)
+        dense_ids = [r.chunk.chunk_id for r in dense_full]
+        sparse_ids = [r.chunk.chunk_id for r in sparse_full]
+
         for cid in q["required_change_ids"]:
             c = changes[cid]
-            repl = f" -> {c['replacement_symbol']}" if c["replacement_symbol"] else ""
-            print(f"  {cid}  {c['symbol_name']} ({c['change_type']}){repl}")
-
-        modes = {
-            "dense": lambda: retrieve_dense(collection, q["query_text"], chunks_by_id, top_k=FETCH_K),
-            "sparse": lambda: retrieve_sparse(sparse_index, q["query_text"], chunks_by_id, top_k=FETCH_K),
-            "hybrid": lambda: retrieve_hybrid(collection, sparse_index, q["query_text"], chunks_by_id, top_k=FETCH_K),
-        }
-
-        print(f"\n{'mode':10s} {'rank':6s} " + " ".join(f"top{c:<4d}" for c in CUTOFFS))
-        for mode_name, run in modes.items():
-            results = run()
-            retrieved_ids = [r.chunk.chunk_id for r in results]
-            rank = rank_of_change(retrieved_ids, target_change_ids, chunk_to_change_ids)
-            rank_str = str(rank) if rank else "NOT FOUND in top 50"
-            hits = " ".join(
-                ("YES".ljust(7) if rank and rank <= c else "no".ljust(7)) for c in CUTOFFS
+            dense_rank = rank_of_change(dense_ids, cid, chunk_to_change_ids)
+            sparse_rank = rank_of_change(sparse_ids, cid, chunk_to_change_ids)
+            hybrid_rank = hybrid_rank_at_benchmark_pool_size(
+                q["query_text"], collection, sparse_index, chunks_by_id, cid, chunk_to_change_ids
             )
-            print(f"{mode_name:10s} {rank_str:6s} {hits}")
+
+            print(f"\n  -- {c['symbol_name']} ({cid}) --")
+            print(f"  {'mode':10s} {'rank':20s} " + " ".join(f"top{c:<4d}" for c in CUTOFFS))
+            for mode_name, rank, note in (
+                ("dense", dense_rank, "(pool: top 50, stable)"),
+                ("sparse", sparse_rank, "(pool: top 50, stable)"),
+                ("hybrid", hybrid_rank, f"(pool: top {BENCHMARK_TOP_K * _FETCH_MULTIPLIER}, matches real benchmark)"),
+            ):
+                rank_str = str(rank) if rank else "NOT FOUND"
+                hits = " ".join(("YES".ljust(7) if rank and rank <= c else "no".ljust(7)) for c in CUTOFFS)
+                print(f"  {mode_name:10s} {rank_str:<20s} {hits}  {note}")
+        print()
 
 
 if __name__ == "__main__":
-    main(["q_nl_02", "q_amb_01"])
+    main()

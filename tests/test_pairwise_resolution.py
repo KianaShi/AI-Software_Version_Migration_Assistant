@@ -52,6 +52,16 @@ def test_cannot_link_short_circuits_even_with_identical_summaries():
     assert "cannot-link" in result.rationale
 
 
+def test_behavior_changed_scores_like_any_other_matching_change_type():
+    # Stage 8A audit: BEHAVIOR_CHANGED must not be special-cased in scoring
+    a = _attrs(change_type="BEHAVIOR_CHANGED", summary="equality semantics changed")
+    b = _attrs(change_type="BEHAVIOR_CHANGED", summary="equality semantics changed")
+
+    result = pairwise.resolve(a, b)
+
+    assert result.score.signals["change_type_match"] == 1.0
+
+
 def test_high_score_yields_match_inferred():
     a = _attrs(summary="verify parameter removed")
     b = _attrs(summary="verify parameter removed")

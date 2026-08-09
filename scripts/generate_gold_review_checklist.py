@@ -2,41 +2,60 @@ import json
 import sqlite3
 from pathlib import Path
 
+from scripts.build_pydantic_benchmark_corpus import run_pipeline
+
 """
-Generate a human-reviewable checklist from data/gold/pydantic_gold_queries.json:
-resolves each required_change_id / relevant_evidence_id back into readable
-symbol/change_type/text instead of opaque hashes, so a reviewer can judge
-correctness without cross-referencing the database by hand.
+Generate a human-reviewable checklist (v2) from
+data/gold/pydantic_gold_queries.json: resolves each required_change_id /
+relevant_evidence_id / stability_evidence_id back into readable
+symbol/change_type/migration-action/evidence text instead of opaque
+hashes, so a reviewer can judge correctness without cross-referencing the
+database by hand.
 """
 
 GOLD_PATH = Path("data/gold/pydantic_gold_queries.json")
-DB_PATH = Path("data/entities.db")
 OUTPUT_PATH = Path("data/gold/pydantic_gold_review_checklist.md")
 
-FLAGGED_TYPES = {"multi_hop", "ambiguous_alias", "behavioral_change", "negative"}
+FLAGGED_TYPES = {
+    "multi_change",
+    "underspecified_symbol",
+    "behavioral_change",
+    "negative",
+}
 
 
 def main() -> None:
     gold = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
-    conn = sqlite3.connect(DB_PATH)
+    chunks, conn, _stats = run_pipeline()
     conn.row_factory = sqlite3.Row
+    chunks_by_id = {c.chunk_id: c for c in chunks}
 
     changes = {r["change_id"]: dict(r) for r in conn.execute("SELECT * FROM change_records")}
     evidence = {r["evidence_id"]: dict(r) for r in conn.execute("SELECT * FROM evidence")}
 
     lines = [
-        "# Pydantic Gold Set — Human Review Checklist",
+        "# Pydantic Gold Set v2 — Human Review Checklist",
         "",
         "Generated from `data/gold/pydantic_gold_queries.json` against the live "
-        "`data/entities.db` (commit `8e540dc`). For each query, review:",
+        "corpus/entities.db, rebuilt fresh by this script (Stage 8A remediation "
+        "commit). For each query, review:",
         "",
         "1. Is the query itself reasonable/realistic?",
         "2. Are `required_change_ids` correct and complete?",
-        "3. Does the evidence text actually support the query?",
+        "3. Does the evidence text actually support the query, and does the "
+        "recommended migration action (not just the deprecation label) look right?",
         "4. Is `query_type` the right taxonomy bucket?",
         "",
-        f"⚠️ = flagged taxonomy (multi_hop / ambiguous_alias / behavioral_change / "
-        f"negative) — highest mislabeling risk, review these first.",
+        "⚠️ = flagged taxonomy (multi_change / underspecified_symbol / "
+        "behavioral_change / negative) — highest mislabeling risk, review "
+        "these first. `legacy_symbol` and `single_change`/`exact_symbol` are "
+        "lower risk (Stage 8A already split out the genuinely ambiguous case "
+        "as `underspecified_symbol`).",
+        "",
+        "Note: `multi_change` means multiple changes co-occurring within the "
+        "single 1.10.x→2.x transition this benchmark covers -- **not** "
+        "version-path multi-hop (v2→v3→v4→v5), which this corpus cannot "
+        "test and isn't claimed anywhere in this checklist.",
         "",
         "---",
         "",
@@ -68,9 +87,14 @@ def main() -> None:
                     if c is None:
                         lines.append(f"- `{cid}` — ⚠️ NOT FOUND IN DB")
                         continue
-                    repl = f" → `{c['replacement_symbol']}`" if c["replacement_symbol"] else ""
+                    status_label = c["change_type"]
+                    action = (
+                        f"**Migration action: use `{c['replacement_symbol']}`**"
+                        if c["replacement_symbol"]
+                        else "_(no replacement -- status-only fact; see deprecated_action_audit.md)_"
+                    )
                     lines.append(
-                        f"- `{cid}` — **{c['symbol_name']}** ({c['change_type']}){repl}, "
+                        f"- `{cid}` — **{c['symbol_name']}** ({status_label}). {action}. "
                         f"version_to={c['version_to']}"
                     )
 
@@ -87,8 +111,22 @@ def main() -> None:
                         continue
                     lines.append(f"- `{eid}` [{e['source_type']}] — {e['raw_text']}")
 
+            stability_ids = q.get("stability_evidence_ids") or []
+            if stability_ids:
+                lines.append("")
+                lines.append("**stability_evidence_ids** (proves nothing changed, not an extracted change):")
+                for chunk_id in stability_ids:
+                    chunk = chunks_by_id.get(chunk_id)
+                    if chunk is None:
+                        lines.append(f"- `{chunk_id}` — ⚠️ NOT FOUND IN CORPUS")
+                        continue
+                    lines.append(f"- `{chunk_id}` [{chunk.source_type}] — {chunk.text}")
+
             lines.append("")
-            lines.append("**Reviewer notes**: _(query reasonable? / change_ids correct? / evidence supports it? / taxonomy correct?)_")
+            lines.append(
+                "**Reviewer notes**: _(query reasonable? / change_ids correct? / "
+                "migration action correct? / evidence supports it? / taxonomy correct?)_"
+            )
             lines.append("")
             lines.append("---")
             lines.append("")

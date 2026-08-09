@@ -11,10 +11,10 @@ This guide summarizes breaking changes when migrating from pydantic 1.10.x to py
 - `BaseModel.construct()` was replaced by `BaseModel.model_construct()` in v2.0.0.
 - `BaseModel.update_forward_refs()` was replaced by `BaseModel.model_rebuild()` in v2.0.0.
 - `BaseModel.__fields__` was renamed to `BaseModel.model_fields` in v2.0.0.
-- `BaseModel.from_orm()` is deprecated in favor of setting `from_attributes` on `model_config`.
+- `BaseModel.from_orm()` is deprecated in favor of `BaseModel.model_validate()` in v2.0.0; set `from_attributes` to `True` on `model_config` first.
 - `BaseModel.parse_raw()` is deprecated in favor of `BaseModel.model_validate_json()`.
-- `BaseModel.parse_file()` is deprecated with no direct v2 replacement.
-- `BaseModel.json_schema()` was replaced by `BaseModel.model_json_schema()` in v2.0.0.
+- `BaseModel.parse_file()` is deprecated in favor of `BaseModel.model_validate()` in v2.0.0; load the file yourself and pass the parsed data in.
+- `BaseModel.schema()` was replaced by `BaseModel.model_json_schema()` in v2.0.0.
 
 ## Config Changes
 
@@ -56,7 +56,7 @@ This guide summarizes breaking changes when migrating from pydantic 1.10.x to py
 ## Dataclass Changes
 
 - The `__post_init_post_parse__` method was removed in v2.0.0.
-- `pydantic.dataclasses` no longer accepts tuples as validation input in v2.0.0; use dicts instead.
+- `pydantic.dataclasses` validation behavior changed in v2.0.0: tuples are no longer accepted as input for nested fields; use dicts instead.
 - The `__pydantic_model__` attribute was removed from pydantic dataclasses in v2.0.0.
 
 ## Moved Symbols (Dependency Changes)
@@ -64,8 +64,9 @@ This guide summarizes breaking changes when migrating from pydantic 1.10.x to py
 - `pydantic.BaseSettings` was moved to `pydantic_settings.BaseSettings` in v2.0.0; install the separate `pydantic-settings` package.
 - `pydantic.color` was moved to `pydantic_extra_types.color` in v2.0.0; install the separate `pydantic-extra-types` package.
 - `pydantic.error_wrappers.ValidationError` was moved to `pydantic.ValidationError` in v2.0.0.
-- `pydantic.utils.to_camel` was moved to `pydantic.alias_generators.to_camel` in v2.0.0.
-- `pydantic.tools.parse_obj_as` was moved to `pydantic.deprecated.tools.parse_obj_as` in v2.0.0.
+- `pydantic.utils.to_camel` was moved to `pydantic.alias_generators.to_pascal` in v2.0.0.
+- `pydantic.utils.to_lower_camel` was moved to `pydantic.alias_generators.to_camel` in v2.0.0.
+- `pydantic.tools.parse_obj_as` is deprecated in favor of `TypeAdapter` in v2.0.0. The legacy function remains importable at `pydantic.deprecated.tools.parse_obj_as`.
 - `pydantic.PyObject` was renamed to `pydantic.ImportString` in v2.0.0.
 
 ## Removed Types
@@ -76,7 +77,7 @@ This guide summarizes breaking changes when migrating from pydantic 1.10.x to py
 
 ## Behavior Changes
 
-- `BaseModel.__eq__` now requires both instances to share the same exact type in addition to equal field values, a behavior change introduced in v2.0.0.
+- `BaseModel.__eq__` behavior changed in v2.0.0: two instances only compare equal when they share the exact same type in addition to matching field values.
 - `Optional` fields without an explicit default are now required in v2.0.0; they no longer default to `None` automatically.
 - A plain `TypeError` raised inside a validator is no longer converted into a `ValidationError` as of v2.0.0.
 - `model_dump_json()` output is compacted by default in v2.0.0, with no spaces after separators.

@@ -87,6 +87,26 @@ def test_non_overlapping_change_semantics_allows_same_type():
     assert constraints.check_non_overlapping_change_semantics(a, b).allowed is True
 
 
+def test_behavior_changed_is_not_special_cased_and_cannot_links_by_default():
+    # Stage 8A audit: BEHAVIOR_CHANGED must get the same conservative,
+    # equality-based treatment as every other ChangeType -- no per-type
+    # branch anywhere in constraints.py should exempt it.
+    a = _attrs(change_type="BEHAVIOR_CHANGED")
+    b = _attrs(change_type="SIGNATURE_CHANGED")
+
+    result = constraints.check_non_overlapping_change_semantics(a, b)
+
+    assert result.allowed is False
+    assert result.reason == "NON_OVERLAPPING_SEMANTICS"
+
+
+def test_behavior_changed_allows_same_type():
+    a = _attrs(change_type="BEHAVIOR_CHANGED")
+    b = _attrs(change_type="BEHAVIOR_CHANGED")
+
+    assert constraints.check_non_overlapping_change_semantics(a, b).allowed is True
+
+
 def test_separate_release_events_triggers_cannot_link():
     symbol = Symbol(name="timeout", package="requests")
     a = _attrs(symbol=symbol, version_to="3.0")

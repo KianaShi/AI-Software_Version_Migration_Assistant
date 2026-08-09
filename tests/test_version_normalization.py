@@ -1,4 +1,5 @@
 from src.extraction.version_normalization import (
+    VersionPrecision,
     VersionQualifier,
     find_version_mentions,
     parse_version_expression,
@@ -77,3 +78,31 @@ def test_find_version_mentions_returns_multiple_independent_mentions():
     mentions = find_version_mentions("Available in 1.2 and again in 3.4.")
 
     assert [m.normalized for m in mentions] == ["1.2", "3.4"]
+
+
+def test_bare_major_only_version_has_major_precision():
+    # Stage 8A: "v2" must not be silently treated as PATCH-precision "2.0.0"
+    mention = parse_version_expression("no direct v2 replacement")
+
+    assert mention.normalized == "2"
+    assert mention.precision == VersionPrecision.MAJOR.value
+
+
+def test_minor_version_has_minor_precision():
+    mention = parse_version_expression("since 2.0")
+
+    assert mention.precision == VersionPrecision.MINOR.value
+
+
+def test_patch_version_has_patch_precision():
+    mention = parse_version_expression("deprecated in v2.0.0")
+
+    assert mention.precision == VersionPrecision.PATCH.value
+
+
+def test_wildcard_patch_normalizes_to_minor_precision_not_patch():
+    # "1.2.x" denotes the 1.2 line, not a specific patch -- MINOR, not PATCH
+    mention = parse_version_expression("available in 1.2.x")
+
+    assert mention.normalized == "1.2"
+    assert mention.precision == VersionPrecision.MINOR.value
