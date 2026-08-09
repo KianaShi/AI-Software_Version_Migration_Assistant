@@ -71,7 +71,9 @@ def main() -> None:
         lines.append("")
 
         for q in by_type[query_type]:
-            lines.append(f"### `{q['query_id']}`")
+            scope = q.get("evaluation_scope", "retrieval")
+            scope_note = "" if scope == "retrieval" else f" — **evaluation_scope={scope}, excluded from core Recall@K aggregate**"
+            lines.append(f"### `{q['query_id']}`{scope_note}")
             lines.append(f"**Query**: {q['query_text']}")
             lines.append(
                 f"**from/to version**: {q.get('from_version')} → {q.get('to_version')}"
@@ -88,11 +90,12 @@ def main() -> None:
                         lines.append(f"- `{cid}` — ⚠️ NOT FOUND IN DB")
                         continue
                     status_label = c["change_type"]
-                    action = (
-                        f"**Migration action: use `{c['replacement_symbol']}`**"
-                        if c["replacement_symbol"]
-                        else "_(no replacement -- status-only fact; see deprecated_action_audit.md)_"
-                    )
+                    if c["replacement_symbol"]:
+                        action = f"**Migration action: use `{c['replacement_symbol']}`**"
+                    elif c.get("migration_action_text"):
+                        action = f"**Migration action: {c['migration_action_text']}**"
+                    else:
+                        action = "_(no replacement/action found in evidence -- status-only fact; see deprecated_action_audit.md)_"
                     lines.append(
                         f"- `{cid}` — **{c['symbol_name']}** ({status_label}). {action}. "
                         f"version_to={c['version_to']}"

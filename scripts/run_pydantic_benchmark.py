@@ -35,6 +35,7 @@ def load_gold() -> list[GoldQuery]:
             to_version=r.get("to_version"),
             required_change_ids=r["required_change_ids"],
             relevant_evidence_ids=r["relevant_evidence_ids"],
+            evaluation_scope=r.get("evaluation_scope", "retrieval"),
         )
         for r in records
     ]
@@ -142,7 +143,9 @@ def failure_quadrant(gold: list[GoldQuery], change_results: dict[str, list]) -> 
 
 
 def main() -> None:
-    gold = load_gold()
+    all_gold = load_gold()
+    gold = [q for q in all_gold if q.evaluation_scope == "retrieval"]
+    scoped_out = [q for q in all_gold if q.evaluation_scope != "retrieval"]
     chunks, conn, _stats = run_pipeline()
     collection, sparse_index = build_indices(chunks)
     chunks_by_id = {c.chunk_id: c for c in chunks}
@@ -150,6 +153,7 @@ def main() -> None:
 
     change_results = {}
     evidence_results = {}
+    scoped_out_results = {}
 
     for mode in MODES:
         run_query = make_run_query(mode, collection, sparse_index, chunks_by_id)
@@ -159,6 +163,10 @@ def main() -> None:
         evidence_results[mode] = evaluate_queries(
             gold, run_query, chunk_to_evidence_ids, required_ids_attr="relevant_evidence_ids"
         )
+        if scoped_out:
+            scoped_out_results[mode] = evaluate_queries(
+                scoped_out, run_query, chunk_to_change_ids, required_ids_attr="required_change_ids"
+            )
 
     # --- aggregate table (change-level, the primary migration-task metric) ---
     aggregate_rows = []
@@ -237,6 +245,17 @@ def main() -> None:
     print("\n=== Failure quadrant (change-level Recall@5, negative queries excluded) ===")
     for name, ids in quadrants.items():
         print(f"{name}: {len(ids)}  {ids}")
+
+    print(f"\nCore retrieval aggregate scored over {len(gold)} queries "
+          f"(evaluation_scope == 'retrieval'); {len(scoped_out)} excluded: "
+          f"{[q.query_id for q in scoped_out]}")
+
+    if scoped_out:
+        print("\n=== Excluded from core aggregate (evaluation_scope != 'retrieval') ===")
+        print("Reported separately -- required-id set is an editorial judgment call, not a single retrieval ground truth.")
+        for mode in MODES:
+            for r in scoped_out_results[mode]:
+                print(f"  {mode:26s} {r.query_id}: R@5={r.recall_at_5:.3f} R@10={r.recall_at_10:.3f} MRR={r.mrr:.3f}")
 
     print(f"\nCSV written to {OUTPUT_DIR}/")
 

@@ -107,6 +107,11 @@ class ChangeAttributes:
     # parameter names the change specifically implicates, if any (e.g. a
     # SIGNATURE_CHANGED naming exactly which parameter was affected)
     parameters: list[str] = field(default_factory=list)
+    # free-text recommended action when it isn't a clean 1:1 symbol swap
+    # (e.g. "use dicts instead", "use Annotated with Field constraints
+    # instead") -- replacement_symbol is for symbol->symbol renames only;
+    # not every migration is one (Stage 8A.1)
+    migration_action_text: str | None = None
 
 
 @dataclass

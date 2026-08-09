@@ -889,3 +889,133 @@ facet redesign (recorded as a good idea for later, not built).
 **Gold set status: corrected, self-consistent, and re-verified against
 real pipeline output -- not yet declared v1.** Freeze remains your call,
 same as before this remediation pass.
+
+## Stage 8A.1 — Second-round Gold Set cleanup (your review of checklist v2)
+
+You reviewed checklist v2 against the official pydantic migration docs a
+second time and found the Stage 8A fixes were correct but incomplete: 5
+more issues that would still pollute freeze-quality evaluation. This
+section is that cleanup. Baseline: commit `6b89d9b`.
+
+### 1. `migration_action_text` -- status-only facts that actually had an action
+
+You found that `q_behav_02`/`q_behav_03`/`q_config_03` and the
+`GenericModel`/`ConstrainedStr` facts all had a real recommended action
+sitting right in their own evidence text ("use dicts instead", "use the
+`json_schema_extra` parameter instead", "subclass `BaseModel` and
+`Generic` directly instead", "use `Annotated` with `Field` constraints
+instead") that never made it into `replacement_symbol`, because
+`change_extraction.py`'s single-symbol keyword path (as opposed to the
+replacement-pattern fast path) never populated it at all. Your call: don't
+force these into `replacement_symbol` (not every migration is a clean
+1:1 symbol rename), add a separate free-text field instead.
+
+Added `ChangeAttributes.migration_action_text: str | None` (schema +
+`store.py` column + `linker.py` threading, same additive pattern as
+`replacement_symbol`/`parameters`). Extraction: a new
+`_ACTION_CLAUSE_RE` in `change_extraction.py` captures a trailing
+`"; ... instead[.]"` clause generically, applied inside `_build_change()`
+so it fires regardless of which extraction path produced the statement
+-- not a new keyword-table entry (that table is shared with `Field()`'s
+"no longer accepts", which should stay `SIGNATURE_CHANGED`; a global
+remap would have reclassified things nobody asked to reclassify). All 4
+facts you flagged now populate it correctly; verified directly against
+the rebuilt DB, not just by re-reading the regex. 3 new regression tests.
+
+### 2. `NoneStr` action + `stricturl` query
+
+`NoneStr` really is a documented alias for `None | str` -- corpus updated
+to state that and add "use `str | None` instead" (captured via the same
+action-clause regex). `stricturl` has no 1:1 replacement in the official
+guide; per your explicit principle (don't manufacture facts), the corpus
+stays status-only for it, and the *query* changed from "what do I need
+to change" (implies an action exists) to "Was `pydantic.stricturl`
+removed in v2?" (doesn't).
+
+### 3. Overstated wording in `q_behav_01` / `q_behav_03`
+
+`q_behav_01`'s corpus fact said non-equal-type models "share the exact
+same type" unconditionally -- true for non-generic models, but generic
+models allow some same-origin cases, so this overstated the real rule.
+Narrowed corpus fact and query to "non-generic models" specifically.
+`q_behav_03`'s query claimed `Field()` "raises a validation error" on
+extra kwargs -- the evidence only supports "unsupported, use
+`json_schema_extra` instead," not a specific exception type. Query
+reworded to not claim what isn't verified. Corpus text itself was already
+fine in both cases; only the gold query text overstated things.
+
+### 4. `q_neg_05` wasn't a valid negative
+
+Old query ("is custom validation still supported?") had
+`required_change_ids=[]` but its own `stability_evidence_ids` said
+"...only the decorator name changed from v1's `@validator`" -- that's
+*capability preserved, API migration required*, not *no migration
+change*. Scoring it as a clean negative would have polluted the
+negative-set's real purpose (testing against over-warning). Per your
+guidance, not worth a new taxonomy value (`capability_preserved_with_migration`)
+for one query -- replaced entirely with a clean, narrow, unconflated
+claim: "Do I still access individual field values as plain attributes
+(e.g. `model.field_name`) in pydantic v2?", backed by a new, real,
+unconflated "Stable in v2" bullet. The old `@field_validator` stability
+bullet was removed from `concepts.md` rather than left dangling, since it
+had the identical conflation problem baked into the corpus fact itself,
+not just the query.
+
+### 5. `q_amb_01` excluded from the core retrieval aggregate
+
+Added `GoldQuery.evaluation_scope` (default `"retrieval"`;
+`"query_planner"` for `q_amb_01`). Its 3-symbol required set is an
+editorial choice about what an underspecified query "should" mean --
+there's no single correct retrieval target, so scoring it in the main
+Dense/BM25/Hybrid Recall@K table penalizes retrieval for a question
+without one gold interpretation. `run_pydantic_benchmark.py` now filters
+`evaluation_scope != "retrieval"` queries out of the core aggregate/
+per-type/CSV, and reports them in a separate section instead (still
+computed, still visible, just not folded into the headline numbers).
+`underspecified_symbol` as a *taxonomy* label is unchanged and still
+correct per your Stage 8A judgment -- this is an orthogonal scoring-scope
+flag, not a taxonomy redesign, so it doesn't reopen the "don't expand
+taxonomy this stage" boundary.
+
+### Rebuild, tests, re-run
+
+Rebuild: same 76 chunks / 34 `UnresolvedChange` / 27 `ChangeRecord`s as
+before (these edits rephrased/completed existing facts, not added new
+distinct ones). Full audit re-run
+(`data/gold/deprecated_action_audit.md`): of 15 `DEPRECATED`/`MOVED`/
+`REMOVED`-plus-flagged records, 14 now carry a real action, 1
+(`stricturl`) intentionally doesn't. Regenerated the gold set (all 48
+resolve cleanly, zero missing symbols/stability facts) and checklist v3
+(now shows `migration_action_text` and `evaluation_scope` per query).
+
+Full suite: **150 passed** (+3: action-clause extraction, no-action-clause
+control, linker threading), same 5 pre-existing failures, untouched.
+
+Benchmark re-run, core aggregate now over 47 queries (`q_amb_01`
+reported separately): Dense R@5 0.968, BM25 0.830, Hybrid 0.957, Hybrid+
+version-filter 0.936. Only 2 core-scope queries remain below Recall@5=1.0
+under Hybrid (`q_nl_02`, `q_nl_03`), both re-classified RANKING with the
+same pool-size-consistent methodology from Stage 8A (dense finds both
+within top 20, hybrid's real 40-candidate fusion pool ranks them lower).
+`q_amb_01` alone: 0.000 across all four modes, classified
+UNDERSPECIFIED_SYMBOL, excluded from the headline table as described
+above. See README's Benchmark Results section for full tables.
+
+**Files added**: none new (this stage extended existing files).
+
+**Files modified**: `src/entities/models.py` (`migration_action_text`
+field), `src/entities/store.py` (schema/row-mapping), `src/aggregation/linker.py`
+(threading), `src/extraction/change_extraction.py` (`_ACTION_CLAUSE_RE`),
+`src/retrieval/evaluation.py` (`evaluation_scope` field on `GoldQuery`),
+`data/corpus/pydantic/migration_guide.md` (NoneStr action,
+`__eq__` narrowed to non-generic), `data/corpus/pydantic/concepts.md`
+(`q_neg_05` stability fact swapped), `scripts/generate_pydantic_gold_set.py`
+(query wording, `stricturl`/`q_neg_05` changes, `evaluation_scope`),
+`scripts/generate_gold_review_checklist.py` (checklist v3 fields),
+`scripts/run_pydantic_benchmark.py` (core-vs-scoped-out split),
+`data/gold/deprecated_action_audit.md` (re-audited), README, this log,
+plus 3 new regression tests.
+
+**Gold set status: corrected twice now, self-consistent, re-verified --
+still not declared v1.** Waiting on your final pass over checklist v3
+and `deprecated_action_audit.md` before that decision, exactly as before.

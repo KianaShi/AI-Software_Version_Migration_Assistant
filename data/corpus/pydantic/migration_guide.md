@@ -72,12 +72,12 @@ This guide summarizes breaking changes when migrating from pydantic 1.10.x to py
 ## Removed Types
 
 - All `Constrained*` classes, such as `pydantic.ConstrainedStr`, were removed in v2.0.0; use `Annotated` with `Field` constraints instead.
-- `pydantic.NoneStr` was removed in v2.0.0.
-- `pydantic.stricturl` was removed in v2.0.0.
+- `pydantic.NoneStr` (an alias for `None | str`) was removed in v2.0.0; use `str | None` instead.
+- `pydantic.stricturl` was removed in v2.0.0. The official migration guide does not list a direct 1:1 replacement for it.
 
 ## Behavior Changes
 
-- `BaseModel.__eq__` behavior changed in v2.0.0: two instances only compare equal when they share the exact same type in addition to matching field values.
+- `BaseModel.__eq__` behavior changed in v2.0.0: two non-generic model instances only compare equal when they are the same model type, in addition to having matching field values.
 - `Optional` fields without an explicit default are now required in v2.0.0; they no longer default to `None` automatically.
 - A plain `TypeError` raised inside a validator is no longer converted into a `ValidationError` as of v2.0.0.
 - `model_dump_json()` output is compacted by default in v2.0.0, with no spaces after separators.

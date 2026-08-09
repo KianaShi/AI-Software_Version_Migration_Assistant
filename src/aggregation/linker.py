@@ -136,6 +136,7 @@ def resolve_evidence(
             external_refs=unresolved.external_refs,
             replacement_symbol=unresolved.replacement_symbol,
             parameters=unresolved.parameters,
+            migration_action_text=unresolved.migration_action_text,
             change_id=generate_id(
                 "chg",
                 unresolved.symbol.name,

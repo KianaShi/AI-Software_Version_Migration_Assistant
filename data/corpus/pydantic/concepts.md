@@ -30,4 +30,4 @@ The following are unchanged between v1 and v2. Called out explicitly since a mig
 - A field given an explicit default value, such as `Field(default=None)`, continues to behave the same way in v2; only fields with no explicit default changed.
 - The core `pydantic` package is still installed with `pip install pydantic` in v2 -- only optional add-ons like settings management and extra types moved to separate packages.
 - Nested model composition, typing a field as another `BaseModel` subclass, is still supported in v2.
-- Custom field-level validation is still supported in v2 via `@field_validator`; only the decorator name changed from v1's `@validator`.
+- Accessing individual field values as plain attributes, e.g. `model.field_name`, is unchanged in pydantic v2.

@@ -134,6 +134,30 @@ def test_signature_changed_captures_named_parameter():
     assert change.parameters == ["timeout"]
 
 
+def test_action_clause_captured_when_no_clean_replacement_symbol():
+    # Stage 8A.1: not every migration is a symbol->symbol rename; a
+    # trailing "; ... instead" clause should still surface as a
+    # free-text recommended action even when replacement_symbol is None.
+    doc, pkg = _doc(
+        "`pydantic.dataclasses` validation behavior changed in v2.0.0: "
+        "tuples are no longer accepted as input for nested fields; use dicts instead."
+    )
+
+    changes = extract_changes(doc, default_package=pkg)
+
+    assert len(changes) == 1
+    assert changes[0].replacement_symbol is None
+    assert changes[0].migration_action_text == "use dicts instead"
+
+
+def test_action_clause_none_when_statement_has_no_instead_clause():
+    doc, pkg = _doc("`FooClient.create()` was removed.")
+
+    changes = extract_changes(doc, default_package=pkg)
+
+    assert changes[0].migration_action_text is None
+
+
 def test_external_ref_in_text_is_captured():
     doc, pkg = _doc("`FooClient.create()` was removed (#4213).")
 

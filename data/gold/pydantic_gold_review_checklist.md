@@ -16,14 +16,14 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 ## behavioral_change ⚠️ (3 queries)
 
 ### `q_behav_01`
-**Query**: Why do two models with the same field values no longer compare equal in v2 if they're different classes?
+**Query**: Why do two non-generic models of different model types no longer compare equal in v2 even with matching field values?
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_54b690481be24182` — **BaseModel.__eq__** (BEHAVIOR_CHANGED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_7172d456635bed8f` — **BaseModel.__eq__** (BEHAVIOR_CHANGED). _(no replacement/action found in evidence -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
 
 **relevant_evidence_ids**:
-- `ev_1563a7ece0a1cced` [MIGRATION_GUIDE] — `BaseModel.__eq__` behavior changed in v2.0.0: two instances only compare equal when they share the exact same type in addition to matching field values.
+- `ev_6ccc64513e74ec6c` [MIGRATION_GUIDE] — `BaseModel.__eq__` behavior changed in v2.0.0: two non-generic model instances only compare equal when they are the same model type, in addition to having matching field values.
 
 **Reviewer notes**: _(query reasonable? / change_ids correct? / migration action correct? / evidence supports it? / taxonomy correct?)_
 
@@ -34,7 +34,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_999d076fe177c512` — **dataclasses** (BEHAVIOR_CHANGED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_999d076fe177c512` — **dataclasses** (BEHAVIOR_CHANGED). **Migration action: use dicts instead**. version_to=2.0.0
 
 **relevant_evidence_ids**:
 - `ev_106711a3466a584a` [MIGRATION_GUIDE] — `pydantic.dataclasses` validation behavior changed in v2.0.0: tuples are no longer accepted as input for nested fields; use dicts instead.
@@ -44,11 +44,11 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 ---
 
 ### `q_behav_03`
-**Query**: Why does `Field()` raise a validation error on extra keyword arguments now instead of just passing them through?
+**Query**: Why don't arbitrary extra kwargs on `Field()` work for JSON Schema metadata in v2?
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_6a2dc66d8dc05c78` — **Field** (SIGNATURE_CHANGED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=None
+- `chg_6a2dc66d8dc05c78` — **Field** (SIGNATURE_CHANGED). **Migration action: use the `json_schema_extra` parameter instead**. version_to=None
 
 **relevant_evidence_ids**:
 - `ev_7e9724f7dfd4b61f` [MIGRATION_GUIDE] — `Field()` no longer accepts arbitrary keyword arguments for JSON schema; use the `json_schema_extra` parameter instead.
@@ -93,7 +93,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_6a2dc66d8dc05c78` — **Field** (SIGNATURE_CHANGED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=None
+- `chg_6a2dc66d8dc05c78` — **Field** (SIGNATURE_CHANGED). **Migration action: use the `json_schema_extra` parameter instead**. version_to=None
 
 **relevant_evidence_ids**:
 - `ev_7e9724f7dfd4b61f` [MIGRATION_GUIDE] — `Field()` no longer accepts arbitrary keyword arguments for JSON schema; use the `json_schema_extra` parameter instead.
@@ -401,8 +401,8 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_86caad279cb88679` — **generics.GenericModel** (REMOVED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
-- `chg_a2fa2bd4b7b59a90` — **ConstrainedStr** (REMOVED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_86caad279cb88679` — **generics.GenericModel** (REMOVED). **Migration action: subclass `BaseModel` and `Generic` directly instead**. version_to=2.0.0
+- `chg_a2fa2bd4b7b59a90` — **ConstrainedStr** (REMOVED). **Migration action: use `Annotated` with `Field` constraints instead**. version_to=2.0.0
 
 **relevant_evidence_ids**:
 - `ev_d7c943c68632e72f` [RELEASE_NOTE] — `pydantic.generics.GenericModel` was removed.
@@ -597,7 +597,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 ---
 
 ### `q_neg_05`
-**Query**: Is custom field-level validation still supported in pydantic v2?
+**Query**: Do I still access individual field values as plain attributes (e.g. `model.field_name`) in pydantic v2?
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**: _(none — negative query)_
@@ -605,7 +605,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **relevant_evidence_ids**: _(none)_
 
 **stability_evidence_ids** (proves nothing changed, not an extracted change):
-- `chunk_a352286f25b071d6` [OFFICIAL_DOCS] — Custom field-level validation is still supported in v2 via `@field_validator`; only the decorator name changed from v1's `@validator`.
+- `chunk_43950fe5cec30c0c` [OFFICIAL_DOCS] — Accessing individual field values as plain attributes, e.g. `model.field_name`, is unchanged in pydantic v2.
 
 **Reviewer notes**: _(query reasonable? / change_ids correct? / migration action correct? / evidence supports it? / taxonomy correct?)_
 
@@ -632,7 +632,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_86caad279cb88679` — **generics.GenericModel** (REMOVED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_86caad279cb88679` — **generics.GenericModel** (REMOVED). **Migration action: subclass `BaseModel` and `Generic` directly instead**. version_to=2.0.0
 
 **relevant_evidence_ids**:
 - `ev_d7c943c68632e72f` [RELEASE_NOTE] — `pydantic.generics.GenericModel` was removed.
@@ -647,7 +647,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_a2fa2bd4b7b59a90` — **ConstrainedStr** (REMOVED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_a2fa2bd4b7b59a90` — **ConstrainedStr** (REMOVED). **Migration action: use `Annotated` with `Field` constraints instead**. version_to=2.0.0
 
 **relevant_evidence_ids**:
 - `ev_3ef91e857e9f1e9c` [MIGRATION_GUIDE] — All `Constrained*` classes, such as `pydantic.ConstrainedStr`, were removed in v2.0.0; use `Annotated` with `Field` constraints instead.
@@ -657,14 +657,14 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 ---
 
 ### `q_single_04`
-**Query**: My project uses `pydantic.stricturl` -- what do I need to change in v2?
+**Query**: Was `pydantic.stricturl` removed in v2?
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_0ac9b1e08e434d62` — **stricturl** (REMOVED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_54238b3546d64670` — **stricturl** (REMOVED). _(no replacement/action found in evidence -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
 
 **relevant_evidence_ids**:
-- `ev_3a43580e16d854b4` [MIGRATION_GUIDE] — `pydantic.stricturl` was removed in v2.0.0.
+- `ev_a0a0d8b430dde722` [MIGRATION_GUIDE] — `pydantic.stricturl` was removed in v2.0.0. The official migration guide does not list a direct 1:1 replacement for it.
 
 **Reviewer notes**: _(query reasonable? / change_ids correct? / migration action correct? / evidence supports it? / taxonomy correct?)_
 
@@ -675,10 +675,10 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 **from/to version**: 1.10 → 2.0
 
 **required_change_ids**:
-- `chg_2c3efcf57e49ace0` — **NoneStr** (REMOVED). _(no replacement -- status-only fact; see deprecated_action_audit.md)_. version_to=2.0.0
+- `chg_db7fcd9beef7eacf` — **NoneStr** (REMOVED). **Migration action: use `str | None` instead**. version_to=2.0.0
 
 **relevant_evidence_ids**:
-- `ev_533719143c455d0e` [MIGRATION_GUIDE] — `pydantic.NoneStr` was removed in v2.0.0.
+- `ev_009a5e0d7e25fbfe` [MIGRATION_GUIDE] — `pydantic.NoneStr` (an alias for `None | str`) was removed in v2.0.0; use `str | None` instead.
 
 **Reviewer notes**: _(query reasonable? / change_ids correct? / migration action correct? / evidence supports it? / taxonomy correct?)_
 
@@ -728,7 +728,7 @@ Note: `multi_change` means multiple changes co-occurring within the single 1.10.
 
 ## underspecified_symbol ⚠️ (1 queries)
 
-### `q_amb_01`
+### `q_amb_01` — **evaluation_scope=query_planner, excluded from core Recall@K aggregate**
 **Query**: What happened to `parse` in pydantic v2?
 **from/to version**: 1.10 → 2.0
 

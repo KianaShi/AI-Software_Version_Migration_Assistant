@@ -90,6 +90,12 @@ _CHANGE_TYPE_KEYWORDS: list[tuple[re.Pattern, str]] = [
 ]
 
 _PARAMETER_RE = re.compile(r"`([^`]+)`\s+parameter|parameter\s+`([^`]+)`", re.IGNORECASE)
+# Trailing "; ... instead[.]" clause: catches recommended actions that
+# aren't a clean symbol->symbol rename (e.g. "use dicts instead",
+# "subclass BaseModel and Generic directly instead") and so never
+# populate replacement_symbol. Applied universally in _build_change,
+# regardless of which extraction path produced the statement.
+_ACTION_CLAUSE_RE = re.compile(r";\s*([^;]*?\binstead\b[^;]*?)\.?\s*$", re.IGNORECASE)
 _EXTERNAL_REF_RE = re.compile(
     r"\bPR\s*#?(\d+)\b|\bGH-(\d+)\b|\bissue\s*#?(\d+)\b|\(#(\d+)\)", re.IGNORECASE
 )
@@ -115,6 +121,13 @@ def _find_parameters(statement: str) -> list[str]:
         if name:
             params.append(name)
     return params
+
+
+def _find_action_clause(statement: str) -> str | None:
+    match = _ACTION_CLAUSE_RE.search(statement)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def _find_external_refs(text: str) -> list[str]:
@@ -206,6 +219,7 @@ def _build_change(
         external_refs=external_refs,
         replacement_symbol=replacement_symbol,
         parameters=parameters,
+        migration_action_text=_find_action_clause(statement),
         source_type=document.source_type,
         source_document_id=document.document_id,
         raw_text=statement,

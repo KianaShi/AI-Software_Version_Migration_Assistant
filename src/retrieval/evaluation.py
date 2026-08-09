@@ -41,6 +41,12 @@ class GoldQuery:
     # Stage 8A feasibility note) backing a negative query's "nothing
     # changed" claim. Optional/empty for non-negative queries.
     stability_evidence_ids: list[str] = field(default_factory=list)
+    # Stage 8A.1: "retrieval" (default) scores in the core Dense/BM25/
+    # Hybrid Recall@K aggregate. Anything else (e.g. "query_planner") is
+    # a query whose required-id set is itself an editorial judgment call
+    # rather than a single well-defined retrieval target -- reported
+    # separately, not folded into the main aggregate.
+    evaluation_scope: str = "retrieval"
 
 
 @dataclass

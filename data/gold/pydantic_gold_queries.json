@@ -12,7 +12,8 @@
       "ev_652888a764e37a78",
       "ev_755df9df6f83b414"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_02",
@@ -27,7 +28,8 @@
       "ev_b1a013459e35afe2",
       "ev_d58abc65ea83cdfa"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_03",
@@ -41,7 +43,8 @@
     "relevant_evidence_ids": [
       "ev_c6570b96830c1dc3"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_04",
@@ -55,7 +58,8 @@
     "relevant_evidence_ids": [
       "ev_61ccb45292681b2e"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_05",
@@ -69,7 +73,8 @@
     "relevant_evidence_ids": [
       "ev_0f40640698d6e9a5"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_06",
@@ -84,7 +89,8 @@
       "ev_bca5bfd474977aea",
       "ev_fd505c6d0201ea86"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_07",
@@ -99,7 +105,8 @@
       "ev_27565fdbbc6dcefe",
       "ev_86b0153189e69b4a"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_exact_08",
@@ -113,7 +120,8 @@
     "relevant_evidence_ids": [
       "ev_e98a7a9dd077a136"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_nl_01",
@@ -128,7 +136,8 @@
       "ev_652888a764e37a78",
       "ev_755df9df6f83b414"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_nl_02",
@@ -142,7 +151,8 @@
     "relevant_evidence_ids": [
       "ev_61ccb45292681b2e"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_nl_03",
@@ -157,7 +167,8 @@
       "ev_b1a013459e35afe2",
       "ev_d58abc65ea83cdfa"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_nl_04",
@@ -172,7 +183,8 @@
       "ev_bca5bfd474977aea",
       "ev_fd505c6d0201ea86"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_nl_05",
@@ -186,7 +198,8 @@
     "relevant_evidence_ids": [
       "ev_c6570b96830c1dc3"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_nl_06",
@@ -200,7 +213,8 @@
     "relevant_evidence_ids": [
       "ev_e98a7a9dd077a136"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_01",
@@ -214,7 +228,8 @@
     "relevant_evidence_ids": [
       "ev_32b947a000d56ab1"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_02",
@@ -229,7 +244,8 @@
       "ev_d7c943c68632e72f",
       "ev_e43947ebd65b2700"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_03",
@@ -243,21 +259,23 @@
     "relevant_evidence_ids": [
       "ev_3ef91e857e9f1e9c"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_04",
-    "query_text": "My project uses `pydantic.stricturl` -- what do I need to change in v2?",
+    "query_text": "Was `pydantic.stricturl` removed in v2?",
     "query_type": "single_change",
     "from_version": "1.10",
     "to_version": "2.0",
     "required_change_ids": [
-      "chg_0ac9b1e08e434d62"
+      "chg_54238b3546d64670"
     ],
     "relevant_evidence_ids": [
-      "ev_3a43580e16d854b4"
+      "ev_a0a0d8b430dde722"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_05",
@@ -266,12 +284,13 @@
     "from_version": "1.10",
     "to_version": "2.0",
     "required_change_ids": [
-      "chg_2c3efcf57e49ace0"
+      "chg_db7fcd9beef7eacf"
     ],
     "relevant_evidence_ids": [
-      "ev_533719143c455d0e"
+      "ev_009a5e0d7e25fbfe"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_06",
@@ -285,7 +304,8 @@
     "relevant_evidence_ids": [
       "ev_30ea86b540cbf0a7"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_07",
@@ -299,7 +319,8 @@
     "relevant_evidence_ids": [
       "ev_13e86ccacaae15b2"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_single_08",
@@ -313,7 +334,8 @@
     "relevant_evidence_ids": [
       "ev_4acc026c1661a889"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_multi_01",
@@ -331,7 +353,8 @@
       "ev_b1a013459e35afe2",
       "ev_d58abc65ea83cdfa"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_multi_02",
@@ -349,7 +372,8 @@
       "ev_27565fdbbc6dcefe",
       "ev_86b0153189e69b4a"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_multi_03",
@@ -367,7 +391,8 @@
       "ev_652888a764e37a78",
       "ev_755df9df6f83b414"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_multi_04",
@@ -384,7 +409,8 @@
       "ev_e43947ebd65b2700",
       "ev_3ef91e857e9f1e9c"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_multi_05",
@@ -400,7 +426,8 @@
       "ev_30f358d7d90407bc",
       "ev_24f527ff528b22fd"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_multi_06",
@@ -416,7 +443,8 @@
       "ev_0f40640698d6e9a5",
       "ev_c6570b96830c1dc3"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_config_01",
@@ -431,7 +459,8 @@
       "ev_30c55c829f8e2ca6",
       "ev_32801bae97fe5369"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_config_02",
@@ -445,7 +474,8 @@
     "relevant_evidence_ids": [
       "ev_32b947a000d56ab1"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_config_03",
@@ -459,7 +489,8 @@
     "relevant_evidence_ids": [
       "ev_7e9724f7dfd4b61f"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_dep_01",
@@ -474,7 +505,8 @@
       "ev_7476d82cf221065c",
       "ev_8eea20663bbd8bd0"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_dep_02",
@@ -488,7 +520,8 @@
     "relevant_evidence_ids": [
       "ev_30f358d7d90407bc"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_dep_03",
@@ -502,7 +535,8 @@
     "relevant_evidence_ids": [
       "ev_24f527ff528b22fd"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_dep_04",
@@ -516,7 +550,8 @@
     "relevant_evidence_ids": [
       "ev_cf2a07b970d04a95"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_dep_05",
@@ -530,21 +565,23 @@
     "relevant_evidence_ids": [
       "ev_586c4afe8ba65cce"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_behav_01",
-    "query_text": "Why do two models with the same field values no longer compare equal in v2 if they're different classes?",
+    "query_text": "Why do two non-generic models of different model types no longer compare equal in v2 even with matching field values?",
     "query_type": "behavioral_change",
     "from_version": "1.10",
     "to_version": "2.0",
     "required_change_ids": [
-      "chg_54b690481be24182"
+      "chg_7172d456635bed8f"
     ],
     "relevant_evidence_ids": [
-      "ev_1563a7ece0a1cced"
+      "ev_6ccc64513e74ec6c"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_behav_02",
@@ -558,11 +595,12 @@
     "relevant_evidence_ids": [
       "ev_106711a3466a584a"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_behav_03",
-    "query_text": "Why does `Field()` raise a validation error on extra keyword arguments now instead of just passing them through?",
+    "query_text": "Why don't arbitrary extra kwargs on `Field()` work for JSON Schema metadata in v2?",
     "query_type": "behavioral_change",
     "from_version": "1.10",
     "to_version": "2.0",
@@ -572,7 +610,8 @@
     "relevant_evidence_ids": [
       "ev_7e9724f7dfd4b61f"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_amb_01",
@@ -591,7 +630,8 @@
       "ev_7faa94eaf774d77e",
       "ev_30ea86b540cbf0a7"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "query_planner"
   },
   {
     "query_id": "q_amb_02",
@@ -606,7 +646,8 @@
       "ev_bca5bfd474977aea",
       "ev_fd505c6d0201ea86"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_amb_03",
@@ -621,7 +662,8 @@
       "ev_27565fdbbc6dcefe",
       "ev_86b0153189e69b4a"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_amb_04",
@@ -636,7 +678,8 @@
       "ev_30c55c829f8e2ca6",
       "ev_32801bae97fe5369"
     ],
-    "stability_evidence_ids": []
+    "stability_evidence_ids": [],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_neg_01",
@@ -648,7 +691,8 @@
     "relevant_evidence_ids": [],
     "stability_evidence_ids": [
       "chunk_6b79a0f330c14283"
-    ]
+    ],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_neg_02",
@@ -660,7 +704,8 @@
     "relevant_evidence_ids": [],
     "stability_evidence_ids": [
       "chunk_236901f84adcb3af"
-    ]
+    ],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_neg_03",
@@ -672,7 +717,8 @@
     "relevant_evidence_ids": [],
     "stability_evidence_ids": [
       "chunk_14f5df59233c17d5"
-    ]
+    ],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_neg_04",
@@ -684,18 +730,20 @@
     "relevant_evidence_ids": [],
     "stability_evidence_ids": [
       "chunk_f385868fdf1ec4c9"
-    ]
+    ],
+    "evaluation_scope": "retrieval"
   },
   {
     "query_id": "q_neg_05",
-    "query_text": "Is custom field-level validation still supported in pydantic v2?",
+    "query_text": "Do I still access individual field values as plain attributes (e.g. `model.field_name`) in pydantic v2?",
     "query_type": "negative",
     "from_version": "1.10",
     "to_version": "2.0",
     "required_change_ids": [],
     "relevant_evidence_ids": [],
     "stability_evidence_ids": [
-      "chunk_a352286f25b071d6"
-    ]
+      "chunk_43950fe5cec30c0c"
+    ],
+    "evaluation_scope": "retrieval"
   }
 ]

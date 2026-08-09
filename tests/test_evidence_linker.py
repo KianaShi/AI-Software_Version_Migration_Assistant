@@ -90,6 +90,26 @@ def test_originated_change_carries_replacement_symbol_and_parameters():
     assert change.parameters == ["verify"]
 
 
+def test_originated_change_carries_migration_action_text():
+    conn = _make_conn()
+    unresolved = UnresolvedChange(
+        symbol=SYMBOL,
+        version_from="2.0",
+        version_to="3.0",
+        change_type="BEHAVIOR_CHANGED",
+        summary="verify handling changed; use ssl_verify instead",
+        migration_action_text="use ssl_verify instead",
+        source_type="RELEASE_NOTE",
+        source_document_id="doc_1",
+        raw_text="verify handling changed; use ssl_verify instead",
+    )
+
+    links = linker.resolve_evidence(conn, _evidence(), unresolved)
+
+    change = store.get_change_record(conn, links[0].change_id)
+    assert change.migration_action_text == "use ssl_verify instead"
+
+
 def test_no_candidates_originates_new_change():
     conn = _make_conn()
 
