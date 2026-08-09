@@ -2,9 +2,10 @@ from src.extraction.sources import parse_github_pr_issue, parse_migration_guide,
 from src.retrieval.chunking import chunk_document
 
 """
-Test source-aware chunking: release notes chunk per bullet entry within
-each version-heading section, migration guides chunk per heading section,
-and PR/issue bodies chunk per paragraph.
+Test source-aware chunking: release_note/migration_guide/official_docs
+all chunk per bullet entry when a section is a bulleted list, and per
+whole heading-section when it's prose without bullets; PR/issue bodies
+chunk per paragraph.
 """
 
 
@@ -31,7 +32,7 @@ def test_release_note_separates_entries_across_version_sections():
     assert versions["Entry B."] == "3.0.0"
 
 
-def test_migration_guide_chunks_per_heading_section():
+def test_migration_guide_chunks_per_heading_section_when_prose():
     text = "# Guide\nIntro.\n\n## Step 1\nDo the thing.\n\n## Step 2\nDo another thing.\n"
     doc = parse_migration_guide(text)
 
@@ -41,6 +42,20 @@ def test_migration_guide_chunks_per_heading_section():
     assert "Intro." in texts
     assert "Do the thing." in texts
     assert "Do another thing." in texts
+
+
+def test_migration_guide_chunks_per_bullet_when_itemized():
+    # each bullet under a heading must be its own chunk, not bundled into
+    # one oversized per-heading chunk (regression: this diluted every
+    # bullet's embedding/BM25 signal until fixed)
+    text = "## Renames\n- `Foo.a()` was replaced by `Foo.b()`.\n- `Foo.c()` was replaced by `Foo.d()`.\n"
+    doc = parse_migration_guide(text)
+
+    chunks = chunk_document(doc, default_package="foo")
+
+    assert len(chunks) == 2
+    assert chunks[0].symbols == ["Foo.a", "Foo.b"]
+    assert chunks[1].symbols == ["Foo.c", "Foo.d"]
 
 
 def test_github_pr_issue_chunks_per_paragraph():

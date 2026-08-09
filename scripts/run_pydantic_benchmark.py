@@ -1,0 +1,245 @@
+import csv
+import json
+import sqlite3
+from pathlib import Path
+
+from scripts.build_pydantic_benchmark_corpus import build_indices, run_pipeline
+from src.retrieval.evaluation import GoldQuery, evaluate_queries
+from src.retrieval.models import Chunk
+from src.retrieval.retrieval import retrieve_dense, retrieve_hybrid, retrieve_sparse
+from src.retrieval.version_filter import query_version_interval
+
+"""
+Stage 7 benchmark runner: Dense vs. Sparse (BM25) vs. Hybrid (RRF) vs.
+Hybrid + version filter, over the pydantic 1.10.x -> 2.x gold set, scored
+both at the change level (required_change_ids -> Migration Chain Recall
+precursor) and the evidence level (relevant_evidence_ids -> plain
+Recall@K/MRR/nDCG). All numbers below are produced by actually running
+this script, not hand-written.
+"""
+
+GOLD_PATH = Path("data/gold/pydantic_gold_queries.json")
+OUTPUT_DIR = Path("data/benchmark")
+TOP_K = 10
+MODES = ["dense", "sparse", "hybrid", "hybrid_version_filtered"]
+
+
+def load_gold() -> list[GoldQuery]:
+    records = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    return [
+        GoldQuery(
+            query_id=r["query_id"],
+            query_text=r["query_text"],
+            query_type=r["query_type"],
+            from_version=r.get("from_version"),
+            to_version=r.get("to_version"),
+            required_change_ids=r["required_change_ids"],
+            relevant_evidence_ids=r["relevant_evidence_ids"],
+        )
+        for r in records
+    ]
+
+
+def build_resolvers(
+    chunks: list[Chunk], conn: sqlite3.Connection
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    chunk_to_evidence_ids: dict[str, list[str]] = {}
+    chunk_to_change_ids: dict[str, list[str]] = {}
+
+    for chunk in chunks:
+        if chunk.evidence_id is None:
+            continue
+        chunk_to_evidence_ids[chunk.chunk_id] = [chunk.evidence_id]
+        rows = conn.execute(
+            "SELECT change_id FROM evidence_links WHERE evidence_id = ?",
+            (chunk.evidence_id,),
+        ).fetchall()
+        chunk_to_change_ids[chunk.chunk_id] = [row[0] for row in rows]
+
+    return chunk_to_change_ids, chunk_to_evidence_ids
+
+
+def make_run_query(mode: str, collection, sparse_index, chunks_by_id):
+    def run(query_text: str) -> list[str]:
+        version_filter = query_version_interval(query_text) if mode == "hybrid_version_filtered" else None
+
+        if mode == "dense":
+            results = retrieve_dense(collection, query_text, chunks_by_id, top_k=TOP_K)
+        elif mode == "sparse":
+            results = retrieve_sparse(sparse_index, query_text, chunks_by_id, top_k=TOP_K)
+        elif mode == "hybrid":
+            results = retrieve_hybrid(collection, sparse_index, query_text, chunks_by_id, top_k=TOP_K)
+        elif mode == "hybrid_version_filtered":
+            results = retrieve_hybrid(
+                collection, sparse_index, query_text, chunks_by_id, top_k=TOP_K, version_filter=version_filter
+            )
+        else:
+            raise ValueError(mode)
+
+        return [r.chunk.chunk_id for r in results]
+
+    return run
+
+
+def mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def aggregate(results) -> dict[str, float]:
+    return {
+        "recall_at_5": mean([r.recall_at_5 for r in results]),
+        "recall_at_10": mean([r.recall_at_10 for r in results]),
+        "mrr": mean([r.mrr for r in results]),
+        "ndcg_at_5": mean([r.ndcg_at_5 for r in results]),
+        "ndcg_at_10": mean([r.ndcg_at_10 for r in results]),
+    }
+
+
+def write_csv(path: Path, rows: list[dict], fieldnames: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def failure_quadrant(gold: list[GoldQuery], change_results: dict[str, list]) -> dict[str, list[str]]:
+    """
+    dense-only-succeeds / sparse-only-succeeds / hybrid-fixes-both /
+    all-fail, based on change-level Recall@5 (== 1.0 counts as success).
+    Negative queries are excluded (Recall@5 is trivially 1.0 for them
+    regardless of retrieval quality -- see module note in the README).
+    """
+    by_id = {q.query_id: q for q in gold}
+    dense_r = {r.query_id: r.recall_at_5 for r in change_results["dense"]}
+    sparse_r = {r.query_id: r.recall_at_5 for r in change_results["sparse"]}
+    hybrid_r = {r.query_id: r.recall_at_5 for r in change_results["hybrid"]}
+
+    quadrants: dict[str, list[str]] = {
+        "dense_only_succeeds": [],
+        "sparse_only_succeeds": [],
+        "hybrid_fixes_both": [],
+        "all_fail": [],
+    }
+
+    for query_id, query in by_id.items():
+        if query.query_type == "negative":
+            continue
+
+        d, s, h = dense_r[query_id] >= 0.999, sparse_r[query_id] >= 0.999, hybrid_r[query_id] >= 0.999
+
+        if d and not s:
+            quadrants["dense_only_succeeds"].append(query_id)
+        if s and not d:
+            quadrants["sparse_only_succeeds"].append(query_id)
+        if h and not d and not s:
+            quadrants["hybrid_fixes_both"].append(query_id)
+        if not d and not s and not h:
+            quadrants["all_fail"].append(query_id)
+
+    return quadrants
+
+
+def main() -> None:
+    gold = load_gold()
+    chunks, conn, _stats = run_pipeline()
+    collection, sparse_index = build_indices(chunks)
+    chunks_by_id = {c.chunk_id: c for c in chunks}
+    chunk_to_change_ids, chunk_to_evidence_ids = build_resolvers(chunks, conn)
+
+    change_results = {}
+    evidence_results = {}
+
+    for mode in MODES:
+        run_query = make_run_query(mode, collection, sparse_index, chunks_by_id)
+        change_results[mode] = evaluate_queries(
+            gold, run_query, chunk_to_change_ids, required_ids_attr="required_change_ids"
+        )
+        evidence_results[mode] = evaluate_queries(
+            gold, run_query, chunk_to_evidence_ids, required_ids_attr="relevant_evidence_ids"
+        )
+
+    # --- aggregate table (change-level, the primary migration-task metric) ---
+    aggregate_rows = []
+    for mode in MODES:
+        row = {"retrieval_mode": mode, "scored_against": "required_change_ids"}
+        row.update(aggregate(change_results[mode]))
+        aggregate_rows.append(row)
+    for mode in MODES:
+        row = {"retrieval_mode": mode, "scored_against": "relevant_evidence_ids"}
+        row.update(aggregate(evidence_results[mode]))
+        aggregate_rows.append(row)
+
+    fieldnames = ["retrieval_mode", "scored_against", "recall_at_5", "recall_at_10", "mrr", "ndcg_at_5", "ndcg_at_10"]
+    write_csv(OUTPUT_DIR / "aggregate_results.csv", aggregate_rows, fieldnames)
+
+    # --- per-query-type slice (change-level) ---
+    slice_rows = []
+    query_types = sorted({q.query_type for q in gold})
+    for mode in MODES:
+        by_query_id = {r.query_id: r for r in change_results[mode]}
+        for query_type in query_types:
+            subset = [by_query_id[q.query_id] for q in gold if q.query_type == query_type]
+            row = {"retrieval_mode": mode, "query_type": query_type, "n_queries": len(subset)}
+            row.update(aggregate(subset))
+            slice_rows.append(row)
+
+    write_csv(
+        OUTPUT_DIR / "per_query_type_results.csv",
+        slice_rows,
+        ["retrieval_mode", "query_type", "n_queries", "recall_at_5", "recall_at_10", "mrr", "ndcg_at_5", "ndcg_at_10"],
+    )
+
+    # --- per-query detail (change-level), for failure analysis ---
+    detail_rows = []
+    for mode in MODES:
+        for r in change_results[mode]:
+            detail_rows.append(
+                {
+                    "retrieval_mode": mode,
+                    "query_id": r.query_id,
+                    "recall_at_5": r.recall_at_5,
+                    "recall_at_10": r.recall_at_10,
+                    "mrr": r.mrr,
+                }
+            )
+    write_csv(
+        OUTPUT_DIR / "per_query_results.csv",
+        detail_rows,
+        ["retrieval_mode", "query_id", "recall_at_5", "recall_at_10", "mrr"],
+    )
+
+    quadrants = failure_quadrant(gold, change_results)
+
+    # --- print summary to console ---
+    print("=== Aggregate (change-level) ===")
+    for mode in MODES:
+        agg = aggregate(change_results[mode])
+        print(f"{mode:26s} R@5={agg['recall_at_5']:.3f} R@10={agg['recall_at_10']:.3f} "
+              f"MRR={agg['mrr']:.3f} nDCG@5={agg['ndcg_at_5']:.3f} nDCG@10={agg['ndcg_at_10']:.3f}")
+
+    print("\n=== Aggregate (evidence-level) ===")
+    for mode in MODES:
+        agg = aggregate(evidence_results[mode])
+        print(f"{mode:26s} R@5={agg['recall_at_5']:.3f} R@10={agg['recall_at_10']:.3f} "
+              f"MRR={agg['mrr']:.3f} nDCG@5={agg['ndcg_at_5']:.3f} nDCG@10={agg['ndcg_at_10']:.3f}")
+
+    print("\n=== Per query type (change-level, Recall@5) ===")
+    for query_type in query_types:
+        line = f"{query_type:20s}"
+        for mode in MODES:
+            by_query_id = {r.query_id: r for r in change_results[mode]}
+            subset = [by_query_id[q.query_id] for q in gold if q.query_type == query_type]
+            line += f"  {mode}={mean([r.recall_at_5 for r in subset]):.3f}"
+        print(line)
+
+    print("\n=== Failure quadrant (change-level Recall@5, negative queries excluded) ===")
+    for name, ids in quadrants.items():
+        print(f"{name}: {len(ids)}  {ids}")
+
+    print(f"\nCSV written to {OUTPUT_DIR}/")
+
+
+if __name__ == "__main__":
+    main()

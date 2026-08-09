@@ -134,6 +134,8 @@ def resolve_evidence(
             change_type=unresolved.change_type,
             summary=unresolved.summary,
             external_refs=unresolved.external_refs,
+            replacement_symbol=unresolved.replacement_symbol,
+            parameters=unresolved.parameters,
             change_id=generate_id(
                 "chg",
                 unresolved.symbol.name,

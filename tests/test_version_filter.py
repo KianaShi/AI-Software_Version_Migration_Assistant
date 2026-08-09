@@ -63,3 +63,19 @@ def test_no_version_mention_in_query_returns_none():
 def test_no_version_on_chunk_returns_none():
     assert chunk_version_interval(None) is None
     assert chunk_version_interval("") is None
+
+
+def test_short_and_long_forms_of_the_same_version_overlap():
+    # "2" (from a bare "v2" mention) and "2.0.0" denote the same version;
+    # naive tuple comparison ((2,) < (2, 0, 0)) would wrongly say no overlap
+    query = query_version_interval("What changed in v2?")
+    chunk = chunk_version_interval("2.0.0")
+
+    assert intervals_overlap(query, chunk) is True
+
+
+def test_short_and_long_forms_do_not_falsely_overlap_different_versions():
+    query = query_version_interval("What changed in v2?")
+    chunk = chunk_version_interval("3.0.0")
+
+    assert intervals_overlap(query, chunk) is False

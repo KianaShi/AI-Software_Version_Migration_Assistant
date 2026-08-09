@@ -34,6 +34,18 @@ def test_replacement_statement_yields_one_change_with_replacement_symbol():
     assert change.extraction_confidence == ExtractionConfidence.EXPLICIT.value
 
 
+def test_moved_to_statement_yields_one_change_with_replacement_symbol():
+    doc, pkg = _doc("`foo.OldThing` was moved to `foo_extra.OldThing` in v5.")
+
+    changes = extract_changes(doc, default_package=pkg)
+
+    assert len(changes) == 1
+    change = changes[0]
+    assert change.symbol.name == "OldThing"
+    assert change.change_type == ChangeType.MOVED.value
+    assert change.replacement_symbol == "foo_extra.OldThing"
+
+
 def test_deprecated_in_favor_of_captures_replacement_without_merging():
     doc, pkg = _doc("`FooClient.create()` is deprecated in favor of `FooClient.build()`.")
 

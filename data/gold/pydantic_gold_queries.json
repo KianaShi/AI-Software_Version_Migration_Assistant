@@ -1,0 +1,643 @@
+[
+  {
+    "query_id": "q_exact_01",
+    "query_text": "What happened to `BaseModel.dict()` in pydantic v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_576c51189b348218"
+    ],
+    "relevant_evidence_ids": [
+      "ev_652888a764e37a78",
+      "ev_755df9df6f83b414"
+    ]
+  },
+  {
+    "query_id": "q_exact_02",
+    "query_text": "What replaced `BaseModel.parse_obj()` in v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_7107f5995efa5a72"
+    ],
+    "relevant_evidence_ids": [
+      "ev_b1a013459e35afe2",
+      "ev_d58abc65ea83cdfa"
+    ]
+  },
+  {
+    "query_id": "q_exact_03",
+    "query_text": "Is `BaseModel.copy()` still available in pydantic v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_4bec5de3a791b4aa"
+    ],
+    "relevant_evidence_ids": [
+      "ev_c6570b96830c1dc3"
+    ]
+  },
+  {
+    "query_id": "q_exact_04",
+    "query_text": "What is the v2 equivalent of `BaseModel.construct()`?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_cdb5bd04644c800d"
+    ],
+    "relevant_evidence_ids": [
+      "ev_61ccb45292681b2e"
+    ]
+  },
+  {
+    "query_id": "q_exact_05",
+    "query_text": "How do I replace `BaseModel.json()` when upgrading to v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_cfb91b3e1e4ff0f9"
+    ],
+    "relevant_evidence_ids": [
+      "ev_0f40640698d6e9a5"
+    ]
+  },
+  {
+    "query_id": "q_exact_06",
+    "query_text": "Is the `@validator` decorator still recommended in pydantic v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_b068027c29b10d68"
+    ],
+    "relevant_evidence_ids": [
+      "ev_bca5bfd474977aea",
+      "ev_fd505c6d0201ea86"
+    ]
+  },
+  {
+    "query_id": "q_exact_07",
+    "query_text": "What should I use instead of `@root_validator` in v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_51e749a61a7c0496"
+    ],
+    "relevant_evidence_ids": [
+      "ev_27565fdbbc6dcefe",
+      "ev_86b0153189e69b4a"
+    ]
+  },
+  {
+    "query_id": "q_exact_08",
+    "query_text": "What replaced `BaseModel.update_forward_refs()` in v2?",
+    "query_type": "exact_symbol",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_ce6917189d569425"
+    ],
+    "relevant_evidence_ids": [
+      "ev_e98a7a9dd077a136"
+    ]
+  },
+  {
+    "query_id": "q_nl_01",
+    "query_text": "How do I turn a model instance into a plain dictionary now?",
+    "query_type": "natural_language",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_576c51189b348218"
+    ],
+    "relevant_evidence_ids": [
+      "ev_652888a764e37a78",
+      "ev_755df9df6f83b414"
+    ]
+  },
+  {
+    "query_id": "q_nl_02",
+    "query_text": "What's the new way to build a model instance while skipping validation?",
+    "query_type": "natural_language",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_cdb5bd04644c800d"
+    ],
+    "relevant_evidence_ids": [
+      "ev_61ccb45292681b2e"
+    ]
+  },
+  {
+    "query_id": "q_nl_03",
+    "query_text": "How do I validate a plain dict into a model object now?",
+    "query_type": "natural_language",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_7107f5995efa5a72"
+    ],
+    "relevant_evidence_ids": [
+      "ev_b1a013459e35afe2",
+      "ev_d58abc65ea83cdfa"
+    ]
+  },
+  {
+    "query_id": "q_nl_04",
+    "query_text": "What's the current recommended way to write a field-level validator function?",
+    "query_type": "natural_language",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_b068027c29b10d68"
+    ],
+    "relevant_evidence_ids": [
+      "ev_bca5bfd474977aea",
+      "ev_fd505c6d0201ea86"
+    ]
+  },
+  {
+    "query_id": "q_nl_05",
+    "query_text": "How can I make a copy of a model instance in the new version?",
+    "query_type": "natural_language",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_4bec5de3a791b4aa"
+    ],
+    "relevant_evidence_ids": [
+      "ev_c6570b96830c1dc3"
+    ]
+  },
+  {
+    "query_id": "q_nl_06",
+    "query_text": "How do I resolve forward-referenced types after all my models are defined?",
+    "query_type": "natural_language",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_ce6917189d569425"
+    ],
+    "relevant_evidence_ids": [
+      "ev_e98a7a9dd077a136"
+    ]
+  },
+  {
+    "query_id": "q_single_01",
+    "query_text": "I'm on pydantic 1.10 and use `allow_mutation` in my model config -- what do I change for v2?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_c26e897728a752e6"
+    ],
+    "relevant_evidence_ids": [
+      "ev_32b947a000d56ab1"
+    ]
+  },
+  {
+    "query_id": "q_single_02",
+    "query_text": "My code subclasses `GenericModel` for generic pydantic models -- how do I migrate this to v2?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_86caad279cb88679"
+    ],
+    "relevant_evidence_ids": [
+      "ev_d7c943c68632e72f",
+      "ev_e43947ebd65b2700"
+    ]
+  },
+  {
+    "query_id": "q_single_03",
+    "query_text": "I use `ConstrainedStr` for constrained string fields -- what's the v2 migration path?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_44f47715ee9797f0"
+    ],
+    "relevant_evidence_ids": [
+      "ev_0fdb15443dc8307f"
+    ]
+  },
+  {
+    "query_id": "q_single_04",
+    "query_text": "My project uses `pydantic.stricturl` -- what do I need to change in v2?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_6dbb71a91346d281"
+    ],
+    "relevant_evidence_ids": [
+      "ev_1751a91c97fb663e"
+    ]
+  },
+  {
+    "query_id": "q_single_05",
+    "query_text": "I have type hints using `pydantic.NoneStr` -- how do I migrate to v2?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_ac8fa5094ddbce74"
+    ],
+    "relevant_evidence_ids": [
+      "ev_39ed808c60f47d97"
+    ]
+  },
+  {
+    "query_id": "q_single_06",
+    "query_text": "I call `BaseModel.parse_file()` to load models from disk -- what's the v2 path?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_5f3768c4a32fbc40"
+    ],
+    "relevant_evidence_ids": [
+      "ev_55de6c818605f9bf"
+    ]
+  },
+  {
+    "query_id": "q_single_07",
+    "query_text": "My ORM integration relies on `BaseModel.from_orm()` -- how do I migrate it to v2?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_c31a4d3b9c2f05b7"
+    ],
+    "relevant_evidence_ids": [
+      "ev_ad037b4f6b0d5091"
+    ]
+  },
+  {
+    "query_id": "q_single_08",
+    "query_text": "I generate JSON schemas with `BaseModel.json_schema()` -- what changes in v2?",
+    "query_type": "single_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_9d2b87a193896e69"
+    ],
+    "relevant_evidence_ids": [
+      "ev_83253e998a2dc1c6"
+    ]
+  },
+  {
+    "query_id": "q_multi_01",
+    "query_text": "A model class calls both `.dict()` and `.parse_obj()` -- what needs to change to migrate it to v2?",
+    "query_type": "multi_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_576c51189b348218",
+      "chg_7107f5995efa5a72"
+    ],
+    "relevant_evidence_ids": [
+      "ev_652888a764e37a78",
+      "ev_755df9df6f83b414",
+      "ev_b1a013459e35afe2",
+      "ev_d58abc65ea83cdfa"
+    ]
+  },
+  {
+    "query_id": "q_multi_02",
+    "query_text": "My codebase uses both `@validator` and `@root_validator` extensively -- what's the full v2 upgrade path?",
+    "query_type": "multi_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_b068027c29b10d68",
+      "chg_51e749a61a7c0496"
+    ],
+    "relevant_evidence_ids": [
+      "ev_bca5bfd474977aea",
+      "ev_fd505c6d0201ea86",
+      "ev_27565fdbbc6dcefe",
+      "ev_86b0153189e69b4a"
+    ]
+  },
+  {
+    "query_id": "q_multi_03",
+    "query_text": "I have a settings class subclassing `BaseSettings` and other models calling `.dict()` -- what all changes for v2?",
+    "query_type": "multi_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_0e5dbf6bbecb76af",
+      "chg_576c51189b348218"
+    ],
+    "relevant_evidence_ids": [
+      "ev_7476d82cf221065c",
+      "ev_8eea20663bbd8bd0",
+      "ev_652888a764e37a78",
+      "ev_755df9df6f83b414"
+    ]
+  },
+  {
+    "query_id": "q_multi_04",
+    "query_text": "I use `GenericModel` for generics and `ConstrainedStr` for string constraints -- how do both migrate to v2?",
+    "query_type": "multi_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_86caad279cb88679",
+      "chg_44f47715ee9797f0"
+    ],
+    "relevant_evidence_ids": [
+      "ev_d7c943c68632e72f",
+      "ev_e43947ebd65b2700",
+      "ev_0fdb15443dc8307f"
+    ]
+  },
+  {
+    "query_id": "q_multi_05",
+    "query_text": "My code imports `pydantic.color` and catches `pydantic.error_wrappers.ValidationError` -- what import paths change in v2?",
+    "query_type": "multi_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_82085d42f6875a45",
+      "chg_b273756303613c54"
+    ],
+    "relevant_evidence_ids": [
+      "ev_30f358d7d90407bc",
+      "ev_24f527ff528b22fd"
+    ]
+  },
+  {
+    "query_id": "q_multi_06",
+    "query_text": "I call `.json()` and `.copy()` on models throughout my app -- what's the full v2 migration for both?",
+    "query_type": "multi_hop",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_cfb91b3e1e4ff0f9",
+      "chg_4bec5de3a791b4aa"
+    ],
+    "relevant_evidence_ids": [
+      "ev_0f40640698d6e9a5",
+      "ev_c6570b96830c1dc3"
+    ]
+  },
+  {
+    "query_id": "q_config_01",
+    "query_text": "Is the `Config` inner class still used for model configuration in pydantic v2?",
+    "query_type": "config_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_8c18bf30e55d23e6"
+    ],
+    "relevant_evidence_ids": [
+      "ev_30c55c829f8e2ca6",
+      "ev_32801bae97fe5369"
+    ]
+  },
+  {
+    "query_id": "q_config_02",
+    "query_text": "I set `allow_mutation = False` on my model's `Config` -- what's the v2 equivalent?",
+    "query_type": "config_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_c26e897728a752e6"
+    ],
+    "relevant_evidence_ids": [
+      "ev_32b947a000d56ab1"
+    ]
+  },
+  {
+    "query_id": "q_config_03",
+    "query_text": "I pass extra keyword arguments to `Field()` for JSON schema metadata -- does that still work in v2?",
+    "query_type": "config_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_6a2dc66d8dc05c78"
+    ],
+    "relevant_evidence_ids": [
+      "ev_7e9724f7dfd4b61f"
+    ]
+  },
+  {
+    "query_id": "q_dep_01",
+    "query_text": "My project imports `BaseSettings` from `pydantic` -- what package do I need for v2?",
+    "query_type": "dependency_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_0e5dbf6bbecb76af"
+    ],
+    "relevant_evidence_ids": [
+      "ev_7476d82cf221065c",
+      "ev_8eea20663bbd8bd0"
+    ]
+  },
+  {
+    "query_id": "q_dep_02",
+    "query_text": "I use `pydantic.color` types in my models -- what do I need to install for v2?",
+    "query_type": "dependency_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_82085d42f6875a45"
+    ],
+    "relevant_evidence_ids": [
+      "ev_30f358d7d90407bc"
+    ]
+  },
+  {
+    "query_id": "q_dep_03",
+    "query_text": "My code catches `pydantic.error_wrappers.ValidationError` -- where does that live in v2?",
+    "query_type": "dependency_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_b273756303613c54"
+    ],
+    "relevant_evidence_ids": [
+      "ev_24f527ff528b22fd"
+    ]
+  },
+  {
+    "query_id": "q_dep_04",
+    "query_text": "I use `pydantic.utils.to_camel` for alias generation -- where did it move to in v2?",
+    "query_type": "dependency_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_7d64668198ecc750"
+    ],
+    "relevant_evidence_ids": [
+      "ev_db53491f08fcc425"
+    ]
+  },
+  {
+    "query_id": "q_dep_05",
+    "query_text": "My code calls `pydantic.tools.parse_obj_as` -- what's the v2 import path?",
+    "query_type": "dependency_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_07fa37d00b6eb85d"
+    ],
+    "relevant_evidence_ids": [
+      "ev_2d7514f38d3eb05b"
+    ]
+  },
+  {
+    "query_id": "q_behav_01",
+    "query_text": "Why do two models with the same field values no longer compare equal in v2 if they're different classes?",
+    "query_type": "behavioral_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_174b519250cb4cde"
+    ],
+    "relevant_evidence_ids": [
+      "ev_8279a666bf6fac2f"
+    ]
+  },
+  {
+    "query_id": "q_behav_02",
+    "query_text": "My pydantic dataclass used to accept a tuple for a nested field and now raises a validation error in v2 -- why?",
+    "query_type": "behavioral_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_eff7eac1264e5719"
+    ],
+    "relevant_evidence_ids": [
+      "ev_93edb12b6036aa07"
+    ]
+  },
+  {
+    "query_id": "q_behav_03",
+    "query_text": "Why does `Field()` raise a validation error on extra keyword arguments now instead of just passing them through?",
+    "query_type": "behavioral_change",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_6a2dc66d8dc05c78"
+    ],
+    "relevant_evidence_ids": [
+      "ev_7e9724f7dfd4b61f"
+    ]
+  },
+  {
+    "query_id": "q_neg_01",
+    "query_text": "Does `BaseModel` still exist as the main way to define a schema in pydantic v2?",
+    "query_type": "negative",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [],
+    "relevant_evidence_ids": []
+  },
+  {
+    "query_id": "q_neg_02",
+    "query_text": "Do I need to change how I define a required string field with `Field(...)` in pydantic v2?",
+    "query_type": "negative",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [],
+    "relevant_evidence_ids": []
+  },
+  {
+    "query_id": "q_neg_03",
+    "query_text": "Is pydantic v2 still installed with `pip install pydantic`?",
+    "query_type": "negative",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [],
+    "relevant_evidence_ids": []
+  },
+  {
+    "query_id": "q_neg_04",
+    "query_text": "Does defining nested `BaseModel` classes inside another model still work the same way in v2?",
+    "query_type": "negative",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [],
+    "relevant_evidence_ids": []
+  },
+  {
+    "query_id": "q_neg_05",
+    "query_text": "Do `Enum` field definitions need any changes to work with pydantic v2?",
+    "query_type": "negative",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [],
+    "relevant_evidence_ids": []
+  },
+  {
+    "query_id": "q_amb_01",
+    "query_text": "What happened to `parse` in pydantic v2?",
+    "query_type": "ambiguous_alias",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_7107f5995efa5a72",
+      "chg_5fecd7e4efcff8f7",
+      "chg_5f3768c4a32fbc40"
+    ],
+    "relevant_evidence_ids": [
+      "ev_b1a013459e35afe2",
+      "ev_d58abc65ea83cdfa",
+      "ev_7faa94eaf774d77e",
+      "ev_55de6c818605f9bf"
+    ]
+  },
+  {
+    "query_id": "q_amb_02",
+    "query_text": "Where did `validator` go in pydantic v2?",
+    "query_type": "ambiguous_alias",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_b068027c29b10d68"
+    ],
+    "relevant_evidence_ids": [
+      "ev_bca5bfd474977aea",
+      "ev_fd505c6d0201ea86"
+    ]
+  },
+  {
+    "query_id": "q_amb_03",
+    "query_text": "What's the relationship between `root_validator` and `model_validator`?",
+    "query_type": "ambiguous_alias",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_51e749a61a7c0496"
+    ],
+    "relevant_evidence_ids": [
+      "ev_27565fdbbc6dcefe",
+      "ev_86b0153189e69b4a"
+    ]
+  },
+  {
+    "query_id": "q_amb_04",
+    "query_text": "Is `Config` still a thing in pydantic v2?",
+    "query_type": "ambiguous_alias",
+    "from_version": "1.10",
+    "to_version": "2.0",
+    "required_change_ids": [
+      "chg_8c18bf30e55d23e6"
+    ],
+    "relevant_evidence_ids": [
+      "ev_30c55c829f8e2ca6",
+      "ev_32801bae97fe5369"
+    ]
+  }
+]

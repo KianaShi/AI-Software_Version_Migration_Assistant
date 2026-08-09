@@ -61,6 +61,13 @@ _REPLACEMENT_PATTERNS: list[tuple[re.Pattern, str]] = [
         ),
         ChangeType.DEPRECATED.value,
     ),
+    (
+        re.compile(
+            rf"(?P<old>{_SYMBOL_TOKEN})\s+was\s+moved\s+to\s+(?P<new>{_SYMBOL_TOKEN})",
+            re.IGNORECASE,
+        ),
+        ChangeType.MOVED.value,
+    ),
 ]
 
 # Most-specific phrase first: "no longer accepts" must win over the

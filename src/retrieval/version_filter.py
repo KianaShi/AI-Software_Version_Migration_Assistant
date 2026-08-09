@@ -64,9 +64,24 @@ def chunk_version_interval(chunk_version: str | None) -> VersionInterval | None:
     return VersionInterval(start=key, end=key)
 
 
+def _pad(key: tuple[int, ...], length: int) -> tuple[int, ...]:
+    return key + (0,) * (length - len(key))
+
+
+def _less_than(a: tuple[int, ...], b: tuple[int, ...]) -> bool:
+    """
+    Numeric comparison that treats missing trailing components as zero, so
+    "2" and "2.0.0" compare equal rather than the shorter tuple being a
+    strict prefix (Python's default tuple ordering would otherwise make
+    (2,) < (2, 0, 0), which is wrong here: they denote the same version).
+    """
+    length = max(len(a), len(b))
+    return _pad(a, length) < _pad(b, length)
+
+
 def intervals_overlap(a: VersionInterval, b: VersionInterval) -> bool:
-    if a.end is not None and b.start is not None and a.end < b.start:
+    if a.end is not None and b.start is not None and _less_than(a.end, b.start):
         return False
-    if b.end is not None and a.start is not None and b.end < a.start:
+    if b.end is not None and a.start is not None and _less_than(b.end, a.start):
         return False
     return True

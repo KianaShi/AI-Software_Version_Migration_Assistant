@@ -335,3 +335,118 @@ Full suite after this stage: 135 passed, the same 5 pre-existing
 `test_retriever.py`/`test_vector_store.py` failures (still deliberately
 untouched -- see Stage 5's note on why, now doubly true since a Hybrid
 Retrieval baseline exists to eventually replace them with).
+
+## Stage 7 — Retrieval Benchmark v1 (real corpus, real gold set, real numbers)
+
+Explicit decision going into this stage (yours): benchmark the frozen
+baseline before touching LLM fallback, reranker, or Late Chunking --
+otherwise a later score change can't be attributed to retrieval quality
+vs. more/better-extracted evidence. Scope locked to pydantic 1.10.x →
+2.x only, not internal 2.x churn, specifically so the gold set would stay
+clean and easy to hand-verify.
+
+**Corpus**: researched the real official pydantic migration guide and
+v2.0/v1.10.10 release info via WebFetch, then wrote original short-form
+corpus text grounded in those real facts (not copied verbatim -- see
+copyright policy) in `data/corpus/pydantic/{migration_guide,
+release_notes,concepts}.md`. `scripts/build_pydantic_benchmark_corpus.py`
+runs the actual Stage 5/6 pipeline over it end to end: chunking → Level 1
+extraction → Level 2 aggregation → dense + sparse indices, with no
+hand-invented ids anywhere -- every `change_id`/`evidence_id` referenced
+by the gold set is something this script actually produced.
+
+**Three real bugs found and fixed by running real data through the
+pipeline** (each with a regression test, each confirmed via full-suite
+rerun before moving on):
+
+1. `src/aggregation/linker.py` silently dropped `replacement_symbol` and
+   `parameters` when originating a new `ChangeRecord` -- the Stage 5
+   schema extension added those fields to `ChangeAttributes` but the
+   linker's change-origination path was never updated to pass them
+   through. Every real REPLACEMENT/MOVED change's `replacement_symbol`
+   was `None` in the DB until this was caught and fixed.
+2. `src/extraction/change_extraction.py`'s `_REPLACEMENT_PATTERNS` had no
+   "X was moved to Y" pattern, only "replaced by" / "deprecated in favor
+   of" / "use X instead of" -- so two-symbol "moved to" statements (e.g.
+   `pydantic.BaseSettings` → `pydantic_settings.BaseSettings`, a real,
+   important Dependency-change fact) produced zero `UnresolvedChange`
+   claims. Added a MOVED variant of the same pattern shape.
+3. `src/retrieval/version_filter.py`'s `intervals_overlap()` compared
+   version-key tuples of different lengths directly, so `(2,) < (2, 0,
+   0)` under Python's default tuple ordering -- meaning a bare "v2" query
+   and a "2.0.0"-tagged chunk were wrongly treated as non-overlapping.
+   This alone collapsed the `hybrid_version_filtered` benchmark row to
+   Recall@5 = 0.208 before it was caught. Fixed by padding both tuples to
+   equal length (trailing zeros) before comparing.
+
+**One chunking granularity bug, the single biggest lever in this stage**:
+`migration_guide`/`official_docs` chunking (`_chunk_heading_aware`) put
+an entire heading-section's text in one chunk, which was a reasonable
+default for prose but wrong for `migration_guide.md`, which is itemized
+exactly like a changelog -- every bullet under a heading (up to 11 of
+them) got bundled into one chunk, diluting that chunk's embedding/BM25
+signal across many unrelated facts. Unified `chunking.py`'s per-source
+strategies into one `_chunk_by_section` that chunks per-bullet whenever a
+section is a bulleted list and falls back to whole-section only for
+actual prose -- granularity now follows content structure, not
+source_type. Change-level Recall@5 before/after: dense 0.604 → 0.927,
+sparse 0.542 → 0.844, hybrid 0.635 → 0.958.
+
+**Gold set**: `scripts/generate_pydantic_gold_set.py` generates
+`data/gold/pydantic_gold_queries.json` (48 queries, 9 taxonomy buckets)
+by referencing real symbol names -- looked up against the live
+`change_records` table at generation time -- rather than hand-typed hash
+ids, so a typo can't silently desync the gold set from the corpus.
+`config_change` and `behavioral_change` came in at 3 queries each instead
+of the suggested 5: several real config-setting renames (`orm_mode`,
+`schema_extra`, bare `Optional`, etc.) never produced an
+`UnresolvedChange` at all, because `symbol_normalization.py` deliberately
+excludes bare, non-dotted backtick words from symbol detection (Stage 5:
+avoids misreading a quoted parameter name as a symbol). Left as an
+honest, documented shortfall rather than padded or fixed by loosening
+that detector, which would reopen the exact false-positive it exists to
+prevent. This is a draft gold set -- the labels are real (grounded in the
+real migration guide, generated against real pipeline output) but not
+yet reviewed/signed off by you.
+
+**Benchmark**: `scripts/run_pydantic_benchmark.py` runs all 48 queries
+through `retrieve_dense` / `retrieve_sparse` / `retrieve_hybrid` /
+`retrieve_hybrid` (+ version filter), scored both at the change level
+(`required_change_ids`) and evidence level (`relevant_evidence_ids`),
+aggregate and per-query-type, plus a 4-quadrant failure comparison
+(dense-only / sparse-only / hybrid-fixes-both / all-fail). Final numbers
+(change-level): Dense R@5=0.927, BM25 R@5=0.844, Hybrid R@5=0.958 (best),
+Hybrid+version-filter R@5=0.938. `natural_language` query type is the
+clearest result: BM25 R@5=0.167 vs. Dense/Hybrid 0.833 -- exactly the
+"sparse wins on exact symbols, dense wins on paraphrase, hybrid keeps the
+best of both" pattern the benchmark was designed to either confirm or
+refute. Only 2 of 43 non-negative queries fail under every mode; both are
+query-wording problems (an unusually distant paraphrase, and a bare
+ambiguous term), not corpus or index gaps -- candidates for a reranker
+and query decomposition respectively, not a bigger corpus. Full tables,
+CSVs, and the version-filter ablation caveat (this single-target-version
+corpus doesn't give the filter much room to show an effect) are in the
+README's new "Benchmark Results (Stage 7)" section.
+
+**Files added**: `data/corpus/pydantic/{migration_guide,release_notes,
+concepts}.md`, `scripts/build_pydantic_benchmark_corpus.py`,
+`scripts/generate_pydantic_gold_set.py`, `scripts/run_pydantic_benchmark.py`,
+`data/gold/pydantic_gold_queries.json`, `data/benchmark/{aggregate_results,
+per_query_type_results,per_query_results}.csv`,
+`tests/test_evidence_linker.py::test_originated_change_carries_replacement_symbol_and_parameters`,
+`tests/test_change_extraction.py::test_moved_to_statement_yields_one_change_with_replacement_symbol`,
+`tests/test_version_filter.py::test_short_and_long_forms_*`,
+`tests/test_chunking.py::test_migration_guide_chunks_per_bullet_when_itemized`.
+
+**Files modified**: `src/aggregation/linker.py` (bugfix 1),
+`src/extraction/change_extraction.py` (bugfix 2 -- new MOVED pattern),
+`src/retrieval/version_filter.py` (bugfix 3 -- padded tuple comparison),
+`src/retrieval/chunking.py` (chunking granularity fix, unified strategy),
+`src/retrieval/evaluation.py` (added `query_type`/`from_version`/
+`to_version`/`relevant_evidence_ids` to `GoldQuery`, `ndcg_at_5`,
+`required_ids_attr` param on `evaluate_queries` so the same function
+scores either id space), `README.md` (Benchmark Results section, status
+checklist, retrieval architecture status).
+
+Full suite after this stage: 140 passed, same 5 pre-existing
+`test_retriever.py`/`test_vector_store.py` failures, untouched.
