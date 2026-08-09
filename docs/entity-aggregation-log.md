@@ -1108,3 +1108,58 @@ header), `scripts/diagnose_failed_queries.py` (metadata-aware loading),
 the numbers you said you'd accept regardless of which retriever wins.**
 Still not declared frozen -- per your own pipeline, that's the next,
 separate step, on your side.
+
+## Gold Set v1 FROZEN
+
+You confirmed the Stage 8A.2 checklist and numbers, and made the freeze
+call. Isolated metadata-only commit `bb9efc8` (deliberately separate from
+the Stage 8A.2 content commit, per your instruction): `GOLD_METADATA` in
+`scripts/generate_pydantic_gold_set.py` updated to
+`status: "human-reviewed / frozen"`, `source_commit: "33163fd"` (the
+last content commit -- the actual snapshot you reviewed; this freeze
+commit's only job is to label that snapshot frozen, not change it --
+avoids the self-referencing-hash problem entirely, as you pointed out).
+Added `gold_set_version: "1"` as the externally-referenced release
+identifier, distinct from `review_revision` (which stays as the internal
+count of correction rounds: 3, Stage 8A → 8A.1 → 8A.2). Regenerated the
+gold JSON via the script (not hand-edited) and confirmed via `git diff`
+that only the `metadata` block changed -- the 48 `queries` are
+byte-identical to `33163fd`, exactly as expected since nothing about the
+underlying facts changed in this step. Tagged `pydantic-gold-v1`
+(annotated). README and this log updated to reflect frozen status in a
+separate, still-small follow-up commit.
+
+**Rule in effect starting now, stated explicitly by you and recorded
+here so it isn't relitigated later**: Stage 8B does not modify Gold Set
+v1 to make retrieval scores look better. If an experiment underperforms
+against the frozen baseline below, the fix is to change retrieval, not
+the gold set. Reopening the gold set requires a real factual error,
+wrong evidence, wrong `required_change_id`, or an invalid query --
+never a low score -- and any such reopening becomes a new revision
+(v1.1/v2), never a silent edit to v1.
+
+**Frozen baseline** (42-query `change_retrieval` core, commit `33163fd`,
+reproducible via `python -m scripts.build_pydantic_benchmark_corpus` →
+`generate_pydantic_gold_set` → `run_pydantic_benchmark`):
+
+| | Dense | BM25 | Hybrid | Hybrid+vf |
+|---|---|---|---|---|
+| Recall@5 | 0.964 | 0.810 | 0.952 | 0.929 |
+| MRR | 0.889 | 0.766 | 0.875 | 0.863 |
+
+Dense > Hybrid > BM25 on Recall@5, and naive 1:1-weighted RRF fusion does
+not improve on a strong Dense retriever here -- a real, examined finding
+(see README "Hybrid does not strictly dominate Dense"), not an artifact
+of an uncorrected gold set. The two remaining failures point at two
+distinct next steps, not one:
+
+- `q_nl_02` -- fails under every mode (Dense included, rank 20/50) →
+  candidate/semantic ranking problem → reranker.
+- `q_nl_03` -- Dense succeeds (rank 4, clean top-5), Hybrid fails (real
+  fusion pool rank 13/40) → fusion dilution problem, not a ranking-model
+  problem → fusion/weighting ablation, or reranker over the union of
+  candidates rather than the fused list.
+
+**Not done, per your explicit instruction to stop here**: no Stage 8A.3.
+Next is Stage 8B0 (fixed candidate-pool / output-k evaluation protocol)
+when you say go -- not started as part of this freeze.

@@ -308,13 +308,13 @@ There are also five pre-existing failures in legacy `retriever.py`/`vector_store
 
 A deterministic baseline was frozen (chunking → dense/sparse/hybrid → Recall@K/MRR/nDCG) and benchmarked *before* considering an LLM extraction fallback, reranker, or Late Chunking -- adding any of those first would make it impossible to tell whether a later improvement came from retrieval or from more/better-extracted evidence.
 
-**Stage 8A/8A.1/8A.2 note**: three rounds of human review against the official pydantic migration guide found real factual/completeness/taxonomy/wording/scope issues; all are now corrected, and the numbers below are post-correction. **The gold set was corrected for accuracy, not for score.** Corrected and self-consistent, still awaiting final human sign-off before being tagged frozen (see `docs/entity-aggregation-log.md`). Gold set identity is now tracked as machine-readable metadata inside the gold file itself:
+**Gold Set v1: FROZEN.** Three rounds of human review against the official pydantic migration guide (Stage 8A/8A.1/8A.2) found real factual/completeness/taxonomy/wording/scope issues; all are corrected, and the numbers below are the frozen baseline. **The gold set was corrected for accuracy, not for score.** Gold set identity is tracked as machine-readable metadata inside the gold file itself:
 
 ```json
-{"name": "Pydantic Gold Set v1", "migration_scope": "1.10.x -> 2.x", "review_revision": 3, "status": "pending_freeze", "source_commit": null}
+{"name": "Pydantic Gold Set v1", "gold_set_version": "1", "migration_scope": "1.10.x -> 2.x", "review_revision": 3, "status": "human-reviewed / frozen", "source_commit": "33163fd"}
 ```
 
-`status`/`source_commit` are filled in only at the actual freeze moment -- no script in this repo sets them to "frozen" itself.
+Tagged `pydantic-gold-v1`. Going forward, Stage 8B does not modify this gold set to make retrieval scores look better -- reopening it requires a real factual/completeness/taxonomy error, and becomes a new revision (v1.1/v2), never a silent edit to v1. See `docs/entity-aggregation-log.md` "Gold Set v1 FROZEN".
 
 **Corpus**: pydantic 1.10.x → 2.x only (no internal 2.x churn), grounded in the real [official migration guide](https://docs.pydantic.dev/latest/migration/) -- original short-form notes, not copied verbatim, covering BaseModel method renames, config renames, field/validator changes, generics/dataclass changes, moved/dependency-split symbols, and behavior changes, plus a "Stable in v2" section of facts that *didn't* change (for negative-query grounding). Run through the actual Level 1 → Level 2 pipeline (no hand-invented ids): 3 source documents → 76 chunks → 34 extracted `UnresolvedChange` claims → 27 resolved `ChangeRecord`s (7 deduplicated across independent migration-guide/release-note evidence via real pairwise resolution, 0 cannot-link vetoes needed). Every `DEPRECATED`/`MOVED`/`REMOVED` fact was audited for a real recommended action (`replacement_symbol` or, when it isn't a clean symbol swap, a free-text `migration_action_text` -- e.g. "use dicts instead"): 14 of 15 carry one; the 1 that doesn't (`stricturl`) is intentional -- no 1:1 replacement is verifiable from the official source, and the gold query was worded accordingly rather than implying one exists. `replacement_symbol` names what to call, not necessarily the complete diff (e.g. `from_orm`'s full action also needs a `model_config` change stated in its evidence text) -- see the semantics note in `data/gold/deprecated_action_audit.md`.
 
@@ -494,11 +494,11 @@ Later experiments will test whether generated migration recommendations can be a
 * [x] Recall@K / MRR / nDCG evaluation harness
 * [x] Real benchmark corpus + 48-query gold set (pydantic 1.10.x → 2.x)
 * [x] Dense vs. sparse vs. hybrid vs. hybrid+version-filter benchmark, per-query-type slicing, failure analysis
-* [x] Stage 8A: gold-set factual/completeness/taxonomy remediation (4 factual fixes, 3 deprecated-only→actionable fixes, taxonomy renamed and split, `BEHAVIOR_CHANGED` applied + downstream-impact audited, minimal version-precision representation, stability evidence for negative queries) -- see `docs/entity-aggregation-log.md`
+* [x] Stage 8A/8A.1/8A.2: gold-set factual/completeness/taxonomy/scope/wording remediation across three human review rounds (4 factual fixes, 3 deprecated-only→actionable fixes, taxonomy renamed and split, `BEHAVIOR_CHANGED` applied + downstream-impact audited, minimal version-precision representation, stability evidence for negative queries, `evaluation_scope` 3-way split) -- see `docs/entity-aggregation-log.md`
+* [x] **Gold Set v1 frozen** (tag `pydantic-gold-v1`, `status: "human-reviewed / frozen"`, `source_commit: 33163fd`) -- reopening requires a real factual/completeness/taxonomy error, never a score-motivated edit; becomes v1.1/v2 if it happens
 
 ### In Progress / Next
 
-* [ ] **Final human sign-off on the gold set** -- audited and self-consistent, but not yet formally tagged v1; that decision is external, not automatic
 * [ ] Reranker (candidate: fixes RANKING-classified failures where the right chunk is indexed but scores too low, e.g. `q_nl_02`/`q_nl_03`, and the concrete finding that RRF hybrid doesn't strictly dominate dense)
 * [ ] Query/symbol context expansion (candidate: fixes UNDERSPECIFIED_SYMBOL failures like `q_amb_01`)
 * [ ] LLM-based extraction fallback (interface already exists in `llm_fallback.py`; not wired to a live model -- benchmark above is what will justify whether/where it's worth it)
