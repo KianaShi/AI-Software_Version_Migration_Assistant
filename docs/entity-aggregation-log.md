@@ -450,3 +450,124 @@ checklist, retrieval architecture status).
 
 Full suite after this stage: 140 passed, same 5 pre-existing
 `test_retriever.py`/`test_vector_store.py` failures, untouched.
+
+## Stage 8A — Benchmark Validation & Failure Diagnosis
+
+Scope, as instructed: validate and diagnose only. No reranker or query-
+rewrite code this stage. Pre-Stage-8A baseline: working tree was already
+clean at commit `8e540dc` (Stage 7's commit) when this stage started, so
+that commit *is* the snapshot -- gold set, benchmark scripts, and results
+exactly as Stage 7 produced them. No redundant empty commit was made;
+`8e540dc` is the reference point for all "before" comparisons in this
+stage and in Stage 8B later.
+
+### Step 1 — Gold set human review checklist (prepared, not yet reviewed)
+
+`scripts/generate_gold_review_checklist.py` resolves every
+`required_change_id`/`relevant_evidence_id` in the gold set back into
+readable symbol/change_type/evidence-text against the live
+`data/entities.db`, grouped by `query_type`, with `multi_hop` /
+`ambiguous_alias` / `behavioral_change` / `negative` flagged for
+priority review. Output: `data/gold/pydantic_gold_review_checklist.md`
+(sent to you directly). This is a review aid, not an automated judgment
+-- no query/label was auto-corrected or auto-flagged as wrong.
+
+Three structural observations surfaced while assembling it (noted for
+your review, not treated as conclusions):
+- `q_config_03` and `q_behav_03` reference the identical change_id and
+  evidence (`chg_6a2dc66d8dc05c78`, `Field` SIGNATURE_CHANGED) under two
+  different taxonomy tags with different phrasing -- worth confirming
+  that's intentional.
+- `q_single_06` (`BaseModel.parse_file`) has `version_to="2"` instead of
+  `"2.0.0"` -- the known bare-"v2" extraction artifact already documented
+  in Stage 7, not a new bug, but visible on this record specifically.
+- Of the four `ambiguous_alias` queries, only `q_amb_01` actually has
+  multiple `required_change_ids` (3); `q_amb_02`/`03`/`04` each have
+  exactly one, so they read closer to `exact_symbol`-with-an-old-name
+  than genuinely ambiguous/multi-candidate queries.
+
+**Status: waiting on your review before Step 5 (freeze).** Steps 2-4
+below don't depend on gold-label corrections, so they proceeded without
+waiting, per your instruction.
+
+### Step 2 — Rank diagnosis for the two failing queries
+
+`scripts/diagnose_failed_queries.py`: for each failing query, finds the
+rank (out of a 50-candidate pull, corpus is 70 chunks total) at which
+*any* chunk resolving to a required change_id first appears, per
+retrieval mode.
+
+**`q_nl_02`** -- "What's the new way to build a model instance while
+skipping validation?" (gold: `BaseModel.construct` → `model_construct`,
+`chg_cdb5bd04644c800d`)
+
+| Mode | Rank | Top5 | Top10 | Top20 | Top50 |
+|---|---|---|---|---|---|
+| Dense | 17 | no | no | yes | yes |
+| BM25 | not found | no | no | no | no |
+| Hybrid | not found | no | no | no | no |
+
+**`q_amb_01`** -- "What happened to `parse` in pydantic v2?" (gold: 3
+changes -- `parse_obj`→`model_validate`, `parse_raw`→`model_validate_json`,
+`parse_file` deprecated)
+
+| Mode | Rank | Top5 | Top10 | Top20 | Top50 |
+|---|---|---|---|---|---|
+| Dense | 18 | no | no | yes | yes |
+| BM25 | not found | no | no | no | no |
+| Hybrid | 26 | no | no | no | yes |
+
+Notable: for `q_nl_02`, Dense alone finds the target at rank 17, but
+Hybrid (RRF over Dense+BM25) does *not* find it anywhere in the top 50 --
+worse than Dense alone. This isn't a bug: RRF sums per-list rank scores,
+so a chunk BM25 never retrieves at all gets zero credit from that side,
+while other chunks that both retrievers rank moderately (even if neither
+ranks them as high as Dense ranks this one) can out-accumulate it. Worth
+knowing before assuming "hybrid can only help or tie" -- it can lose to
+its best component on a per-query basis. `q_amb_01` doesn't show this
+(Hybrid rank 26 sits between Dense's 18 and BM25's "not found").
+
+### Step 3 — Failure classification
+
+- **`q_nl_02` → RANKING.** Dense places the correct change within the
+  top 20 of 70 total chunks (top ~24th percentile) -- the fact is
+  correctly extracted, correctly indexed, and semantically close enough
+  for embedding similarity to surface it, just not competitively enough
+  for top 5. Not SEMANTIC_MISMATCH: that category requires absence from
+  top 50 under every mode, which isn't true here (Dense finds it). →
+  reranker candidate, per your mapping.
+- **`q_amb_01` → AMBIGUOUS_SYMBOL.** The query is a single bare,
+  four-letter term ("`parse`") that genuinely matches multiple real
+  symbols in the corpus (`parse_obj`, `parse_raw`, `parse_file`, and a
+  non-required look-alike `parse_obj_as`), diluting relevance across all
+  of them rather than pointing at one. Rank data supports this reading
+  over RANKING: even Dense alone, usually the strongest single signal in
+  this benchmark, only gets the best of 3 required changes to rank 18 --
+  worse than most single-hop/exact-symbol queries with an equally rare
+  term but no ambiguity. → symbol/context expansion candidate, per your
+  mapping, not a reranker problem (a reranker can't resolve which
+  `parse_*` the user meant without more context to rerank against).
+
+Neither failure is classified as CORPUS_GAP or EXTRACTION_GAP: in both
+cases the required content is demonstrably indexed and extractable (both
+appear within Dense's top 20), so the fact reaching the corpus and
+surviving Level 1 extraction isn't in question -- only how it's ranked
+against the specific query wording. Per your instruction, not defaulting
+either one to "needs agentic decomposition."
+
+### Step 4 — Version filter conclusion (recorded, not re-implemented)
+
+Stage 7 result, restated for the record: Hybrid Recall@5 = 0.958 →
+Hybrid+version-filter Recall@5 = 0.938 (a small decrease, not an
+increase). Conclusion: this corpus is scoped to a single target version
+(pydantic 2.0.0) with no genuinely conflicting multi-version content, so
+the version-interval filter has essentially nothing to exclude that
+wasn't already irrelevant for other reasons -- it cannot demonstrate a
+real ablation effect (positive or negative) on this corpus. This is a
+corpus-design limitation of Stage 7, not a verdict on whether version
+filtering is a good idea; it stays unimplemented-changed and unthresholded
+this stage, exactly as instructed. A real test of version filtering needs
+a corpus spanning multiple versions with content that actually
+contradicts across versions (e.g. a symbol that means different things in
+1.x vs 2.x vs 3.x) -- noted here as a corpus requirement for whenever
+that ablation is worth running for real, not committed to as a next step.
