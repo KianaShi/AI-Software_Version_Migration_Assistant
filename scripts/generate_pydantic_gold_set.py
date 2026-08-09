@@ -67,17 +67,30 @@ docs/entity-aggregation-log.md).
 DB_PATH = Path("data/entities.db")
 OUTPUT_PATH = Path("data/gold/pydantic_gold_queries.json")
 
-# Stage 8A.2 §3: gold set identity/versioning metadata. status/source_commit
-# are filled in only at the actual freeze moment (a separate, explicit human
-# action -- see docs/entity-aggregation-log.md) -- this script never sets them
-# to "frozen" itself. review_revision bumps by hand each time a human review
-# round produces corrections (this is round 3: Stage 8A -> 8A.1 -> 8A.2).
+# Gold set identity/versioning metadata. review_revision bumps by hand
+# each time a human review round produces corrections (this took 3:
+# Stage 8A -> 8A.1 -> 8A.2). gold_set_version is the externally-referenced
+# frozen release identifier, distinct from review_revision's internal
+# iteration count.
+#
+# FROZEN as of this commit: status/source_commit were "pending_freeze"/
+# None through Stage 8A.2, filled in only now, at the explicit freeze
+# decision (a separate human action from any correction round -- see
+# docs/entity-aggregation-log.md "Gold Set v1 FROZEN"). source_commit
+# deliberately points at 33163fd (the last content commit, the actual
+# snapshot that was reviewed) rather than this freeze commit's own hash
+# -- a commit can't contain its own hash, and there's no need for it to:
+# this commit's only job is to label that already-reviewed snapshot
+# frozen, not to change it. If the gold set is ever reopened for a real
+# factual/completeness/taxonomy error (not for score), that becomes
+# v1.1/v2 with a new review_revision -- never a silent edit to v1.
 GOLD_METADATA = {
     "name": "Pydantic Gold Set v1",
+    "gold_set_version": "1",
     "migration_scope": "1.10.x -> 2.x",
     "review_revision": 3,
-    "status": "pending_freeze",
-    "source_commit": None,
+    "status": "human-reviewed / frozen",
+    "source_commit": "33163fd",
 }
 
 GOLD_QUERIES = [

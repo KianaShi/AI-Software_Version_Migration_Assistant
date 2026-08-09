@@ -1,10 +1,11 @@
 {
   "metadata": {
     "name": "Pydantic Gold Set v1",
+    "gold_set_version": "1",
     "migration_scope": "1.10.x -> 2.x",
     "review_revision": 3,
-    "status": "pending_freeze",
-    "source_commit": null
+    "status": "human-reviewed / frozen",
+    "source_commit": "33163fd"
   },
   "queries": [
     {
