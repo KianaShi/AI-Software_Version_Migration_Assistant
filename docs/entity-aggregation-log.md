@@ -1622,11 +1622,11 @@ have been enough:
 
 Not xfailed, because xfail says "this contract should exist, just not
 yet" -- there is no plan to wire `retriever.py` back into the pipeline;
-it's cleanly superseded, not pending. **Note for you, not acted on in
-this audit**: `src/retriever.py` is now fully unreferenced (zero
-callers, zero tests) -- worth an explicit decision on whether to delete
-the source file too, out of scope here since this audit was scoped to
-the test files.
+it's cleanly superseded, not pending. `src/retriever.py` itself removed
+after the repository-wide reference check above confirmed zero active
+callers -- re-ran the same `rg` search after deleting the test file to
+re-verify nothing besides narrative mentions in `README.md`/this log
+referenced it before removing the source file too.
 
 **`tests/test_vector_store.py::test_add_chunks` (1 failing test) -> A,
 fix to match the current contract.** `add_chunks()` is real and actively
@@ -1655,7 +1655,7 @@ is smaller but every one of the 175 is a real, currently-meaningful test.
 Full suite confirmed clean; no retrieval algorithm, chunking, Gold Set
 v1, or benchmark code touched.
 
-**Files removed**: `tests/test_retriever.py`.
+**Files removed**: `tests/test_retriever.py`, `src/retriever.py`.
 
 **Files modified**: `tests/test_vector_store.py` (`test_add_chunks`
 fixed to pass `metadatas`).
