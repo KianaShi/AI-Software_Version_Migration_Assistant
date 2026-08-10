@@ -1432,3 +1432,53 @@ empty -- the new validation only rejects invalid input, the valid path
 **Files modified**: `src/retrieval/retrieval.py` (`_check_output_k`
 guards), `tests/test_retrieval_prefix_stability.py` (2 new parametrized
 tests, unused-variable nitpick fix).
+
+## PR #2 — DeepSource `PYL-E1120` triage (not fixed here)
+
+DeepSource flagged 4 occurrences of `PYL-E1120` ("no value for argument")
+in `tests/test_retriever.py:20` and `tests/test_vector_store.py:31` --
+calls to `add_chunks()` missing `chunks`/`embeddings`/`metadatas`. These
+are exactly the 5 pre-existing `test_retriever.py`/`test_vector_store.py`
+failures documented since Stage 4 (legacy interface mismatch, neither
+file touched by any stage in this log): not a regression introduced by
+Stage 8B0 (this PR never touches `src/retriever.py` or
+`src/vector_store.py`'s legacy call sites), and not a false positive
+either -- the calls genuinely don't match the current `add_chunks()`
+signature.
+
+**Triage, your call**: VALID finding / OUT OF SCOPE for Stage 8B0 /
+EXISTING TECH DEBT. Not fixed in this PR -- fixing it here would pull an
+unrelated pre-existing issue into a PR scoped to `candidate_k`/`output_k`
+decoupling. Left as the same "pre-existing, unrelated" note carried
+since Stage 4, now with a DeepSource ticket number attached to it for
+traceability.
+
+**Tightened policy going forward, stated explicitly so it isn't
+relitigated**: "leave the 5 known failures alone indefinitely" stops
+being the right call the moment there's real work to do near this code
+-- a clean `164 passed, 5 known failures` baseline degrades over time
+into "is this new failure one of the 5 old ones or a real regression?"
+requiring manual triage every time. Before Stage 8B1 starts, a small,
+separately-scoped **repository-health-audit** step (not part of 8B0,
+not part of 8B1's retrieval work) will resolve `test_retriever.py` and
+`test_vector_store.py` into exactly one of three dispositions, decided
+per-file/per-test rather than assumed:
+
+1. The API surface they exercise is still meant to be supported ->
+   update the tests to call the current `add_chunks()`/retriever API for
+   real, so they start testing a contract that's actually still true.
+2. The API they exercise is legacy and the tests are themselves
+   obsolete -> delete them (or replace with real coverage of whatever
+   superseded them), rather than keep dead assertions around.
+3. The real contract can't be decided correctly until the future
+   Hybrid Retrieval/Qdrant replacement lands -> `pytest.mark.xfail(strict=True,
+   reason="...")`, so the debt is an explicit, named, tracked xfail
+   instead of an ambient "5 failures, don't worry about it" the suite
+   silently carries forever.
+
+Your stated preference is (2) or (3) over (1) as a default reflex --
+mechanically patching `add_chunks()` call sites to stop the `TypeError`
+would make DeepSource go green without confirming either test still
+verifies a contract anyone wants preserved, which is worse than an
+honest xfail. This audit is scoped narrowly to *classifying* these two
+files, not to building whatever replaces them.
