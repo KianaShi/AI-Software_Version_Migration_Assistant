@@ -1482,3 +1482,74 @@ would make DeepSource go green without confirming either test still
 verifies a contract anyone wants preserved, which is worse than an
 honest xfail. This audit is scoped narrowly to *classifying* these two
 files, not to building whatever replaces them.
+
+## PR #2 review fix, round 2 — validation isolation + real typing bugs
+
+Two of five findings this round were already fixed in `0e93061`
+(`_check_output_k`'s `candidate_k`/`output_k` guards, the `sparse_index`
+unused-binding nitpick) -- stale review comments from before that commit
+landed, no action needed. The other three, verified against current code
+before fixing:
+
+**1. `test_candidate_k_zero_or_negative_raises` didn't actually cover
+`candidate_k=-1`, and conflated `candidate_k=0` with `output_k=0`
+instead of isolating it.** Valid gap: the name promised "zero or
+negative" but only tested zero, and pairing it with `output_k=0` (rather
+than a valid, positive `output_k`) meant the test didn't cleanly
+attribute the raise to `candidate_k` alone. Split into
+`test_candidate_k_non_positive_raises`, parametrized over
+`candidate_k in (0, -1)` × the three retrievers, always paired with
+`output_k=1` (valid) so the failure is unambiguously `candidate_k`'s.
+
+**2. Reviewer also asked to parametrize `output_k` as invalid at both 0
+and -1 -- partially disagreed, with a test added to show why.**
+`output_k=0` is intentionally *not* rejected: asking for zero results is
+a well-defined request (same as Python's `list[:0]`), unlike `output_k=-1`
+which is the real footgun (`list[:-1]` silently drops the last element
+instead of erroring). Kept `test_output_k_negative_raises` at -1 only,
+and added `test_output_k_zero_is_valid` asserting `retrieve_dense(...,
+output_k=0) == []` -- makes the design decision an explicit, tested
+contract instead of leaving future reviewers to re-raise the same
+question against a bare comment.
+
+**3. Two real DeepSource typing findings, both fixed.**
+- `src/entities/store.py::_normalize_pair`: declared `-> tuple[str,
+  str]` but returned `tuple(sorted((a, b)))`, which mypy only infers as
+  `tuple[str, ...]` (the `tuple()` constructor over an arbitrary iterable
+  can't be narrowed to a fixed arity). Fixed by unpacking explicitly:
+  `a, b = sorted((...)); return a, b`.
+- `src/retrieval/version_filter.py::query_version_interval`: called
+  `mention_to_interval(mention.normalized, ...)` where `mention.normalized`
+  is typed `str | None` (per `VersionMention`'s own field comment: "None
+  if the matched text couldn't be normalized") but `mention_to_interval`'s
+  first parameter is typed plain `str`. Checked every `VersionMention`
+  construction site in `find_version_mentions()` -- all three always set
+  `normalized` from a live regex match, so this isn't a reachable runtime
+  bug *today*, but the type gap was real and `parse_version_key(None)`
+  would crash with `AttributeError` if that ever changed silently. Added
+  `or mention.normalized is None` to the existing early-return guard.
+
+**Skipped, with reason**: `PYL-W0105` ("string statement has no effect")
+on `tests/test_retrieval_prefix_stability.py`'s module docstring, placed
+after the imports rather than as the first statement. Valid per Python's
+own docstring rule, but this is the same placement used consistently
+across `retrieval.py`, `hybrid.py`, `filters.py`, `version_filter.py`,
+`evaluation.py`, and others since Stage 6 -- a deliberate, repo-wide
+convention, not something this one new test file introduced. Fixing it
+in isolation here would make this file inconsistent with the rest of the
+codebase; whether to change the convention repo-wide is a separate style
+decision, out of scope for this PR.
+
+**Verification**: full suite 174 passed (170 prior + 4 net new: the
+`candidate_k` test grew from 3 cases to 6, plus 1 new zero-is-valid
+test), same 5 pre-existing unrelated failures. Reran the frozen
+benchmark since `version_filter.py` changed: numbers unchanged (Dense
+0.964/0.889, BM25 0.810/0.766, Hybrid 0.952/0.875, Hybrid+vf
+0.929/0.863), `git diff --stat data/benchmark/ data/gold/` empty --
+expected, since the `mention.normalized is None` guard covers a case
+that doesn't occur in the current corpus.
+
+**Files modified**: `src/entities/store.py` (`_normalize_pair` typing
+fix), `src/retrieval/version_filter.py` (`query_version_interval` `None`
+guard), `tests/test_retrieval_prefix_stability.py` (split/parametrize
+`candidate_k` test, new `test_output_k_zero_is_valid`).

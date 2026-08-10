@@ -87,26 +87,36 @@ def test_output_k_greater_than_candidate_k_raises(retrieve_kind):
             retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=50, candidate_k=CANDIDATE_K)
 
 
+@pytest.mark.parametrize("candidate_k", [0, -1])
 @pytest.mark.parametrize("retrieve_kind", ["dense", "sparse", "hybrid"])
-def test_candidate_k_zero_or_negative_raises(retrieve_kind):
-    # candidate_k=0 is a real footgun, not just an edge case: fetch_k=0 is
+def test_candidate_k_non_positive_raises(retrieve_kind, candidate_k):
+    # candidate_k<=0 is a real footgun, not just an edge case: fetch_k=0 is
     # falsy, so query_dense/query_sparse's `fetch_k or top_k` would
     # silently fall back to their own top_k=10 default instead of an
     # empty pool -- exactly the "pool secretly depends on something other
-    # than candidate_k" bug this stage exists to prevent.
+    # than candidate_k" bug this stage exists to prevent. Paired with a
+    # valid, positive output_k so the failure is attributable to
+    # candidate_k alone, isolated from the output_k checks below.
     chunks_by_id, collection, sparse_index = _build_corpus()
+    output_k = 1
 
     with pytest.raises(ValueError):
         if retrieve_kind == "dense":
-            retrieve_dense(collection, QUERY, chunks_by_id, output_k=0, candidate_k=0)
+            retrieve_dense(collection, QUERY, chunks_by_id, output_k=output_k, candidate_k=candidate_k)
         elif retrieve_kind == "sparse":
-            retrieve_sparse(sparse_index, QUERY, chunks_by_id, output_k=0, candidate_k=0)
+            retrieve_sparse(sparse_index, QUERY, chunks_by_id, output_k=output_k, candidate_k=candidate_k)
         else:
-            retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=0, candidate_k=0)
+            retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=output_k, candidate_k=candidate_k)
 
 
 @pytest.mark.parametrize("retrieve_kind", ["dense", "sparse", "hybrid"])
 def test_output_k_negative_raises(retrieve_kind):
+    # Only output_k<0 is rejected -- output_k=0 is deliberately valid (a
+    # request for zero results is well-defined, same as Python's
+    # list[:0]); see test_output_k_zero_is_valid below. -1 is the real
+    # footgun: Python's list[:-1] silently drops the last element instead
+    # of erroring, which would be a much more confusing failure mode than
+    # this explicit ValueError.
     chunks_by_id, collection, sparse_index = _build_corpus()
 
     with pytest.raises(ValueError):
@@ -116,6 +126,14 @@ def test_output_k_negative_raises(retrieve_kind):
             retrieve_sparse(sparse_index, QUERY, chunks_by_id, output_k=-1, candidate_k=CANDIDATE_K)
         else:
             retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=-1, candidate_k=CANDIDATE_K)
+
+
+def test_output_k_zero_is_valid():
+    chunks_by_id, collection, _ = _build_corpus()
+
+    results = retrieve_dense(collection, QUERY, chunks_by_id, output_k=0)
+
+    assert results == []
 
 
 def test_default_candidate_k_is_40():
