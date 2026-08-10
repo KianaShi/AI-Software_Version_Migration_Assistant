@@ -43,6 +43,15 @@ CANDIDATE_K = 40
 
 
 def _check_output_k(output_k: int, candidate_k: int) -> None:
+    if candidate_k <= 0:
+        # fetch_k=0 is falsy, so query_dense/query_sparse would silently
+        # fall back to their own top_k=10 default instead of an empty
+        # pool -- exactly the "candidate pool secretly depends on
+        # something other than candidate_k" failure this stage exists to
+        # prevent, so reject it explicitly rather than let it happen.
+        raise ValueError(f"candidate_k ({candidate_k}) must be positive.")
+    if output_k < 0:
+        raise ValueError(f"output_k ({output_k}) must not be negative.")
     if output_k > candidate_k:
         raise ValueError(
             f"output_k ({output_k}) cannot exceed candidate_k ({candidate_k}) -- "

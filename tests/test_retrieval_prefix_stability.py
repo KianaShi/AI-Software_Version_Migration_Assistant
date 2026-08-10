@@ -87,12 +87,43 @@ def test_output_k_greater_than_candidate_k_raises(retrieve_kind):
             retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=50, candidate_k=CANDIDATE_K)
 
 
+@pytest.mark.parametrize("retrieve_kind", ["dense", "sparse", "hybrid"])
+def test_candidate_k_zero_or_negative_raises(retrieve_kind):
+    # candidate_k=0 is a real footgun, not just an edge case: fetch_k=0 is
+    # falsy, so query_dense/query_sparse's `fetch_k or top_k` would
+    # silently fall back to their own top_k=10 default instead of an
+    # empty pool -- exactly the "pool secretly depends on something other
+    # than candidate_k" bug this stage exists to prevent.
+    chunks_by_id, collection, sparse_index = _build_corpus()
+
+    with pytest.raises(ValueError):
+        if retrieve_kind == "dense":
+            retrieve_dense(collection, QUERY, chunks_by_id, output_k=0, candidate_k=0)
+        elif retrieve_kind == "sparse":
+            retrieve_sparse(sparse_index, QUERY, chunks_by_id, output_k=0, candidate_k=0)
+        else:
+            retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=0, candidate_k=0)
+
+
+@pytest.mark.parametrize("retrieve_kind", ["dense", "sparse", "hybrid"])
+def test_output_k_negative_raises(retrieve_kind):
+    chunks_by_id, collection, sparse_index = _build_corpus()
+
+    with pytest.raises(ValueError):
+        if retrieve_kind == "dense":
+            retrieve_dense(collection, QUERY, chunks_by_id, output_k=-1, candidate_k=CANDIDATE_K)
+        elif retrieve_kind == "sparse":
+            retrieve_sparse(sparse_index, QUERY, chunks_by_id, output_k=-1, candidate_k=CANDIDATE_K)
+        else:
+            retrieve_hybrid(collection, sparse_index, QUERY, chunks_by_id, output_k=-1, candidate_k=CANDIDATE_K)
+
+
 def test_default_candidate_k_is_40():
     assert CANDIDATE_K == 40
 
 
 def test_widening_candidate_k_explicitly_allows_deeper_output_k():
-    chunks_by_id, collection, sparse_index = _build_corpus()
+    chunks_by_id, collection, _ = _build_corpus()
 
     results = retrieve_dense(collection, QUERY, chunks_by_id, output_k=25, candidate_k=25)
 

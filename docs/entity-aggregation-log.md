@@ -1401,3 +1401,34 @@ new public API, `_FETCH_MULTIPLIER` import removed),
 weight/`RRF_K` tuning, no Gold Set v1 changes, no chunking changes, no
 query rewriting. Gold Set v1 remains frozen and untouched; benchmark
 numbers confirmed unchanged, not re-optimized.
+
+## PR #2 review fix — `_check_output_k` didn't validate `candidate_k`/`output_k` themselves
+
+CodeRabbit found `_check_output_k` only checked `output_k > candidate_k`,
+never validating that either value was sane on its own. Verified: real
+bug, not just a defensive nitpick. `query_dense`/`query_sparse` compute
+`n = fetch_k or top_k` -- `fetch_k=0` is falsy in Python, so
+`candidate_k=0` would silently fall through to that function's own
+`top_k=10` default instead of an empty pool, which is exactly the
+"candidate pool secretly depends on something other than candidate_k"
+failure mode this whole stage exists to prevent. A negative `output_k`
+had no guard either (Python's `list[:-1]` silently drops the last
+element rather than erroring). Fixed: `_check_output_k` now rejects
+`candidate_k <= 0` and `output_k < 0` before the existing
+exceeds-candidate_k check. Added `tests/
+test_retrieval_prefix_stability.py::test_candidate_k_zero_or_negative_raises`
+and `::test_output_k_negative_raises` (parametrized over Dense/Sparse/
+Hybrid, 6 new tests). Also fixed a nitpick in the same file: an unused
+`sparse_index` binding in `test_widening_candidate_k_explicitly_allows_deeper_output_k`
+renamed to `_`.
+
+**Verification**: full suite 170 passed (164 prior + 6 new), same 5
+pre-existing unrelated failures. Reran the frozen benchmark: numbers
+unchanged (Dense 0.964/0.889, BM25 0.810/0.766, Hybrid 0.952/0.875,
+Hybrid+vf 0.929/0.863), `git diff --stat data/benchmark/ data/gold/`
+empty -- the new validation only rejects invalid input, the valid path
+(`output_k=10, candidate_k=40`) is untouched.
+
+**Files modified**: `src/retrieval/retrieval.py` (`_check_output_k`
+guards), `tests/test_retrieval_prefix_stability.py` (2 new parametrized
+tests, unused-variable nitpick fix).
