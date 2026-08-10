@@ -1290,3 +1290,271 @@ entry + corrected description of the digest test's coverage).
 suite 156 passed, same 5 pre-existing unrelated failures. No benchmark
 rerun (retrieval code and gold payload both untouched), tag
 `pydantic-gold-v1` not moved (still `bb9efc8`).
+
+## Stage 8B0 — Decouple candidate_k from output_k in retrieval
+
+Scope, as instructed: fix the retrieval evaluation protocol only --
+`candidate_k` (how many ranked candidates are fetched/fused before
+filtering) made independent of `output_k` (how many of those survive as
+the final result), so Top5/Top10/Top20 are guaranteed nested prefixes of
+one ranking. Explicitly excluded and untouched: reranker, RRF weighting
+(`RRF_K` still 60, no per-source weight), chunking, query rewriting, and
+Gold Set v1 (still frozen at `bb9efc8`, `pydantic-gold-v1` tag not
+moved).
+
+**The bug, restated precisely**: `retrieve_dense`/`retrieve_sparse`/
+`retrieve_hybrid` used to compute `fetch_k = top_k * 4`, so a single
+`top_k` argument controlled both how many candidates were pulled *and*
+how many were returned -- calling the same retriever with `top_k=5` vs.
+`top_k=10` queried genuinely different candidate pools, not just
+different slice lengths of one pool. This is provably harmless for Dense
+and Sparse alone: each is a single deterministic ranking, and widening
+the fetch only appends lower-ranked candidates after the ones a narrower
+fetch already had, so post-filter re-ranking never reorders the shared
+prefix. It is **not** harmless for Hybrid: RRF only assigns a nonzero
+score to a chunk that appears in at least one of the two fetched
+rankings, so a chunk absent from a narrower pool contributes zero credit
+from that side; admitting it at a wider pool can let it out-accumulate
+chunks that were already ranked near the top of the narrower pool's
+fused result -- not merely extend the list, reorder it. This is the
+exact mechanism documented in Stage 8A behind `scripts/
+diagnose_failed_queries.py`'s manual fetch_k reconstruction (the
+`q_multi_02` false-negative under a wider diagnostic pool). Before this
+stage, that reconstruction workaround was necessary precisely because
+the production API had no way to ask for "the same candidate pool, sliced
+differently" -- Top5 and Top10 from two separate calls were not
+comparable at all.
+
+**Fix**: `src/retrieval/retrieval.py` -- new module constant
+`CANDIDATE_K = 40`, and all three `retrieve_*` functions now take
+`output_k` (default 10, was `top_k`) and `candidate_k` (default
+`CANDIDATE_K`) as independent parameters. Every call fetches/fuses over
+exactly `candidate_k` candidates regardless of `output_k`; `output_k`
+only slices the already-computed, already-filtered result at the end.
+Because the underlying ranked-and-filtered list no longer depends on
+`output_k` at all, `output_k=5`/`10`/`20` against the same `candidate_k`
+are guaranteed prefixes of each other by construction of list slicing --
+not something that needs re-verifying per query, just a property of the
+code shape. Added `_check_output_k()`: raises `ValueError` if
+`output_k > candidate_k`, since silently truncating below the requested
+depth would be a worse failure mode than refusing.
+
+`CANDIDATE_K = 40` was chosen to exactly match the old effective pool
+size at the benchmark's `top_k=10` (`10 * 4 = 40`), specifically so this
+refactor is a pure architecture fix, not a silent behavior change to the
+frozen baseline -- confirmed below.
+
+**Call sites updated** (mechanical rename + explicit `candidate_k`,
+no behavior change intended):
+- `scripts/run_pydantic_benchmark.py`: `TOP_K` renamed `OUTPUT_K`
+  (still 10); `make_run_query()`'s three `retrieve_*` calls pass
+  `output_k=OUTPUT_K, candidate_k=CANDIDATE_K` explicitly (imported from
+  `retrieval.py`, so this runner can't silently drift from what
+  retrieval.py actually uses).
+- `scripts/diagnose_failed_queries.py`: this script's entire reason for
+  manually reconstructing Hybrid's fused ranking via direct
+  `query_dense`/`query_sparse`/`reciprocal_rank_fusion` calls was to work
+  around the old pool-size-follows-top_k coupling. With `candidate_k`
+  now fixed independent of `output_k`, that workaround is unnecessary --
+  simplified `hybrid_rank_at_benchmark_pool_size()` to call
+  `retrieve_hybrid(..., output_k=CANDIDATE_K)` directly through the
+  public API and read off the real candidate pool, removing the
+  duplicated fusion logic entirely. `_FETCH_MULTIPLIER` no longer exists
+  (this script imported it directly, so this fix was required, not
+  optional); deep-look `retrieve_dense`/`retrieve_sparse` calls
+  (previously `top_k=50`) now pass `output_k=50, candidate_k=50`
+  explicitly, since 50 exceeds the new default `candidate_k=40`.
+- `tests/test_retrieval_integration.py`: `top_k=` renamed `output_k=` at
+  all call sites (mechanical, no assertions changed).
+
+**New regression tests**: `tests/test_retrieval_prefix_stability.py` (8
+tests) -- a 25-chunk corpus sharing the query's terms (so Dense and BM25
+both return >=20 non-zero candidates), asserting for each of
+Dense/Sparse/Hybrid that `output_k=10` results are exactly
+`output_k=20`'s first 10, and `output_k=5` is exactly `output_k=10`'s
+first 5 -- including for Hybrid, the exact case that was broken before
+this stage. Also covers: `output_k > candidate_k` raises `ValueError`
+for all three retrievers; `CANDIDATE_K == 40`; explicitly widening
+`candidate_k` allows a deeper `output_k` than the default.
+
+**Verification that the frozen baseline didn't move**: reran
+`scripts/run_pydantic_benchmark.py` against the fixed retrieval code.
+Aggregate numbers are byte-identical to the frozen baseline -- Dense
+R@5=0.964/MRR=0.889, BM25=0.810/0.766, Hybrid=0.952/0.875,
+Hybrid+vf=0.929/0.863 -- and `git diff --stat data/benchmark/` is empty
+(all three CSVs unchanged), confirming this was purely an architecture
+fix at `output_k=10` (`candidate_k=40` exactly reproducing the old
+`fetch_k` at that one value), not a retrieval-quality change. Full test
+suite: 164 passed (156 prior + 8 new), same 5 pre-existing unrelated
+`test_retriever.py`/`test_vector_store.py` failures, untouched.
+
+**Files modified**: `src/retrieval/retrieval.py` (`candidate_k`/
+`output_k` decoupling, `CANDIDATE_K`, `_check_output_k`),
+`scripts/run_pydantic_benchmark.py` (`OUTPUT_K` rename, explicit
+`candidate_k`), `scripts/diagnose_failed_queries.py` (simplified via the
+new public API, `_FETCH_MULTIPLIER` import removed),
+`tests/test_retrieval_integration.py` (`top_k=` → `output_k=`).
+
+**Files added**: `tests/test_retrieval_prefix_stability.py`.
+
+**Not done, per this stage's explicit scope**: no reranker, no RRF
+weight/`RRF_K` tuning, no Gold Set v1 changes, no chunking changes, no
+query rewriting. Gold Set v1 remains frozen and untouched; benchmark
+numbers confirmed unchanged, not re-optimized.
+
+## PR #2 review fix — `_check_output_k` didn't validate `candidate_k`/`output_k` themselves
+
+CodeRabbit found `_check_output_k` only checked `output_k > candidate_k`,
+never validating that either value was sane on its own. Verified: real
+bug, not just a defensive nitpick. `query_dense`/`query_sparse` compute
+`n = fetch_k or top_k` -- `fetch_k=0` is falsy in Python, so
+`candidate_k=0` would silently fall through to that function's own
+`top_k=10` default instead of an empty pool, which is exactly the
+"candidate pool secretly depends on something other than candidate_k"
+failure mode this whole stage exists to prevent. A negative `output_k`
+had no guard either (Python's `list[:-1]` silently drops the last
+element rather than erroring). Fixed: `_check_output_k` now rejects
+`candidate_k <= 0` and `output_k < 0` before the existing
+exceeds-candidate_k check. Added `tests/
+test_retrieval_prefix_stability.py::test_candidate_k_zero_or_negative_raises`
+and `::test_output_k_negative_raises` (parametrized over Dense/Sparse/
+Hybrid, 6 new tests). Also fixed a nitpick in the same file: an unused
+`sparse_index` binding in `test_widening_candidate_k_explicitly_allows_deeper_output_k`
+renamed to `_`.
+
+**Verification**: full suite 170 passed (164 prior + 6 new), same 5
+pre-existing unrelated failures. Reran the frozen benchmark: numbers
+unchanged (Dense 0.964/0.889, BM25 0.810/0.766, Hybrid 0.952/0.875,
+Hybrid+vf 0.929/0.863), `git diff --stat data/benchmark/ data/gold/`
+empty -- the new validation only rejects invalid input, the valid path
+(`output_k=10, candidate_k=40`) is untouched.
+
+**Files modified**: `src/retrieval/retrieval.py` (`_check_output_k`
+guards), `tests/test_retrieval_prefix_stability.py` (2 new parametrized
+tests, unused-variable nitpick fix).
+
+## PR #2 — DeepSource `PYL-E1120` triage (not fixed here)
+
+DeepSource flagged 4 occurrences of `PYL-E1120` ("no value for argument")
+in `tests/test_retriever.py:20` and `tests/test_vector_store.py:31` --
+calls to `add_chunks()` missing `chunks`/`embeddings`/`metadatas`. These
+are exactly the 5 pre-existing `test_retriever.py`/`test_vector_store.py`
+failures documented since Stage 4 (legacy interface mismatch, neither
+file touched by any stage in this log): not a regression introduced by
+Stage 8B0 (this PR never touches `src/retriever.py` or
+`src/vector_store.py`'s legacy call sites), and not a false positive
+either -- the calls genuinely don't match the current `add_chunks()`
+signature.
+
+**Triage, your call**: VALID finding / OUT OF SCOPE for Stage 8B0 /
+EXISTING TECH DEBT. Not fixed in this PR -- fixing it here would pull an
+unrelated pre-existing issue into a PR scoped to `candidate_k`/`output_k`
+decoupling. Left as the same "pre-existing, unrelated" note carried
+since Stage 4, now with a DeepSource ticket number attached to it for
+traceability.
+
+**Tightened policy going forward, stated explicitly so it isn't
+relitigated**: "leave the 5 known failures alone indefinitely" stops
+being the right call the moment there's real work to do near this code
+-- a clean `164 passed, 5 known failures` baseline degrades over time
+into "is this new failure one of the 5 old ones or a real regression?"
+requiring manual triage every time. Before Stage 8B1 starts, a small,
+separately-scoped **repository-health-audit** step (not part of 8B0,
+not part of 8B1's retrieval work) will resolve `test_retriever.py` and
+`test_vector_store.py` into exactly one of three dispositions, decided
+per-file/per-test rather than assumed:
+
+1. The API surface they exercise is still meant to be supported ->
+   update the tests to call the current `add_chunks()`/retriever API for
+   real, so they start testing a contract that's actually still true.
+2. The API they exercise is legacy and the tests are themselves
+   obsolete -> delete them (or replace with real coverage of whatever
+   superseded them), rather than keep dead assertions around.
+3. The real contract can't be decided correctly until the future
+   Hybrid Retrieval/Qdrant replacement lands -> `pytest.mark.xfail(strict=True,
+   reason="...")`, so the debt is an explicit, named, tracked xfail
+   instead of an ambient "5 failures, don't worry about it" the suite
+   silently carries forever.
+
+Your stated preference is (2) or (3) over (1) as a default reflex --
+mechanically patching `add_chunks()` call sites to stop the `TypeError`
+would make DeepSource go green without confirming either test still
+verifies a contract anyone wants preserved, which is worse than an
+honest xfail. This audit is scoped narrowly to *classifying* these two
+files, not to building whatever replaces them.
+
+## PR #2 review fix, round 2 — validation isolation + real typing bugs
+
+Two of five findings this round were already fixed in `0e93061`
+(`_check_output_k`'s `candidate_k`/`output_k` guards, the `sparse_index`
+unused-binding nitpick) -- stale review comments from before that commit
+landed, no action needed. The other three, verified against current code
+before fixing:
+
+**1. `test_candidate_k_zero_or_negative_raises` didn't actually cover
+`candidate_k=-1`, and conflated `candidate_k=0` with `output_k=0`
+instead of isolating it.** Valid gap: the name promised "zero or
+negative" but only tested zero, and pairing it with `output_k=0` (rather
+than a valid, positive `output_k`) meant the test didn't cleanly
+attribute the raise to `candidate_k` alone. Split into
+`test_candidate_k_non_positive_raises`, parametrized over
+`candidate_k in (0, -1)` × the three retrievers, always paired with
+`output_k=1` (valid) so the failure is unambiguously `candidate_k`'s.
+
+**2. Reviewer also asked to parametrize `output_k` as invalid at both 0
+and -1 -- partially disagreed, with a test added to show why.**
+`output_k=0` is intentionally *not* rejected: asking for zero results is
+a well-defined request (same as Python's `list[:0]`), unlike `output_k=-1`
+which is the real footgun (`list[:-1]` silently drops the last element
+instead of erroring). Kept `test_output_k_negative_raises` at -1 only,
+and added `test_output_k_zero_is_valid` asserting `retrieve_dense(...,
+output_k=0) == []` -- makes the design decision an explicit, tested
+contract instead of leaving future reviewers to re-raise the same
+question against a bare comment.
+
+**3. Two real DeepSource typing findings, both fixed.**
+- `src/entities/store.py::_normalize_pair`: declared `-> tuple[str,
+  str]` but returned `tuple(sorted((a, b)))`, which mypy only infers as
+  `tuple[str, ...]` (the `tuple()` constructor over an arbitrary iterable
+  can't be narrowed to a fixed arity). Fixed by unpacking explicitly:
+  `a, b = sorted((...)); return a, b`.
+- `src/retrieval/version_filter.py::query_version_interval`: called
+  `mention_to_interval(mention.normalized, ...)` where `mention.normalized`
+  is typed `str | None` (per `VersionMention`'s own field comment: "None
+  if the matched text couldn't be normalized") but `mention_to_interval`'s
+  first parameter is typed plain `str`. Checked every `VersionMention`
+  construction site in `find_version_mentions()` -- all three always set
+  `normalized` from a live regex match, so this isn't a reachable runtime
+  bug *today*, but the type gap was real and `parse_version_key(None)`
+  would crash with `AttributeError` if that ever changed silently. Added
+  `or mention.normalized is None` to the existing early-return guard.
+
+**Skipped, with reason**: `PYL-W0105` ("string statement has no effect")
+on the triple-quoted string in `tests/test_retrieval_prefix_stability.py`,
+placed after the imports. To be precise about what the lint is actually
+catching: because it isn't the first statement in the file, it is *not*
+the module docstring (doesn't populate `__doc__`) -- it's a plain string
+expression Python evaluates and discards, exactly as DeepSource says.
+The lint is factually correct, not a false positive. Left unfixed anyway,
+because this same placement is used consistently across `retrieval.py`,
+`hybrid.py`, `filters.py`, `version_filter.py`, `evaluation.py`, and
+others since Stage 6 -- a deliberate, repo-wide convention (context after
+imports, not before), not something this one new test file introduced.
+Moving just this file's string literal above its imports would make it
+inconsistent with every other module in the codebase instead of
+consistent with none of them; adopting real module docstrings
+repo-wide is a separate, larger style decision, out of scope for this PR.
+
+**Verification**: full suite 174 passed (170 prior + 4 net new: the
+`candidate_k` test grew from 3 cases to 6, plus 1 new zero-is-valid
+test), same 5 pre-existing unrelated failures. Reran the frozen
+benchmark since `version_filter.py` changed: numbers unchanged (Dense
+0.964/0.889, BM25 0.810/0.766, Hybrid 0.952/0.875, Hybrid+vf
+0.929/0.863), `git diff --stat data/benchmark/ data/gold/` empty --
+expected, since the `mention.normalized is None` guard covers a case
+that doesn't occur in the current corpus.
+
+**Files modified**: `src/entities/store.py` (`_normalize_pair` typing
+fix), `src/retrieval/version_filter.py` (`query_version_interval` `None`
+guard), `tests/test_retrieval_prefix_stability.py` (split/parametrize
+`candidate_k` test, new `test_output_k_zero_is_valid`).

@@ -6,7 +6,7 @@ from pathlib import Path
 from scripts.build_pydantic_benchmark_corpus import build_indices, run_pipeline
 from src.retrieval.evaluation import GoldQuery, evaluate_queries
 from src.retrieval.models import Chunk
-from src.retrieval.retrieval import retrieve_dense, retrieve_hybrid, retrieve_sparse
+from src.retrieval.retrieval import CANDIDATE_K, retrieve_dense, retrieve_hybrid, retrieve_sparse
 from src.retrieval.version_filter import query_version_interval
 
 """
@@ -16,11 +16,22 @@ both at the change level (required_change_ids -> Migration Chain Recall
 precursor) and the evidence level (relevant_evidence_ids -> plain
 Recall@K/MRR/nDCG). All numbers below are produced by actually running
 this script, not hand-written.
+
+Stage 8B0: OUTPUT_K (how many results each retriever returns/is scored
+on) and CANDIDATE_K (the fixed candidate pool retrieval.py fetches/fuses
+over before slicing, imported from retrieval.py so this runner can never
+drift from what retrieval.py actually uses) are now independent -- see
+src/retrieval/retrieval.py's module docstring. OUTPUT_K stays 10, same
+as the old TOP_K, and CANDIDATE_K's default (40) is exactly what the old
+fetch_k = top_k * 4 already worked out to at top_k=10, so this run
+reproduces the frozen Gold Set v1 baseline numbers rather than moving
+them -- the fix changes what happens when output_k varies, not this
+runner's fixed-at-10 behavior.
 """
 
 GOLD_PATH = Path("data/gold/pydantic_gold_queries.json")
 OUTPUT_DIR = Path("data/benchmark")
-TOP_K = 10
+OUTPUT_K = 10
 MODES = ["dense", "sparse", "hybrid", "hybrid_version_filtered"]
 
 
@@ -67,14 +78,17 @@ def make_run_query(mode: str, collection, sparse_index, chunks_by_id):
         version_filter = query_version_interval(query_text) if mode == "hybrid_version_filtered" else None
 
         if mode == "dense":
-            results = retrieve_dense(collection, query_text, chunks_by_id, top_k=TOP_K)
+            results = retrieve_dense(collection, query_text, chunks_by_id, output_k=OUTPUT_K, candidate_k=CANDIDATE_K)
         elif mode == "sparse":
-            results = retrieve_sparse(sparse_index, query_text, chunks_by_id, top_k=TOP_K)
+            results = retrieve_sparse(sparse_index, query_text, chunks_by_id, output_k=OUTPUT_K, candidate_k=CANDIDATE_K)
         elif mode == "hybrid":
-            results = retrieve_hybrid(collection, sparse_index, query_text, chunks_by_id, top_k=TOP_K)
+            results = retrieve_hybrid(
+                collection, sparse_index, query_text, chunks_by_id, output_k=OUTPUT_K, candidate_k=CANDIDATE_K
+            )
         elif mode == "hybrid_version_filtered":
             results = retrieve_hybrid(
-                collection, sparse_index, query_text, chunks_by_id, top_k=TOP_K, version_filter=version_filter
+                collection, sparse_index, query_text, chunks_by_id,
+                output_k=OUTPUT_K, candidate_k=CANDIDATE_K, version_filter=version_filter,
             )
         else:
             raise ValueError(mode)

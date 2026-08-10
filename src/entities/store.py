@@ -104,7 +104,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 def _normalize_pair(change_id_a: str, change_id_b: str) -> tuple[str, str]:
     """Cannot-link constraints are symmetric; store them under a fixed order."""
-    return tuple(sorted((change_id_a, change_id_b)))
+    a, b = sorted((change_id_a, change_id_b))
+    return a, b
 
 
 def _row_to_change_record(row: sqlite3.Row) -> ChangeRecord:

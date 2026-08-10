@@ -52,7 +52,7 @@ def mention_to_interval(normalized: str, qualifier: str, normalized_end: str | N
 
 def query_version_interval(query_text: str) -> VersionInterval | None:
     mention = parse_version_expression(query_text)
-    if mention is None:
+    if mention is None or mention.normalized is None:
         return None
     return mention_to_interval(mention.normalized, mention.qualifier, mention.normalized_end)
 
