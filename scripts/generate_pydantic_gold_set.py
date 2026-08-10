@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -92,6 +93,52 @@ GOLD_METADATA = {
     "status": "human-reviewed / frozen",
     "source_commit": "33163fd",
 }
+
+
+def query_digest(queries: list[dict]) -> str:
+    """
+    Canonical content digest over the resolved query list only (not
+    GOLD_METADATA) -- freeze metadata like status/source_commit changes
+    independently of query content and must not perturb this hash. Uses
+    sort_keys + compact separators so the digest is stable across
+    pretty-printing/whitespace changes and only reacts to real content
+    drift.
+    """
+    payload = json.dumps(
+        queries,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+# Computed once, at freeze time, from the reviewed GOLD_QUERIES/
+# NEGATIVE_QUERIES definitions that produced the frozen
+# data/gold/pydantic_gold_queries.json (commit bb9efc8, source content
+# from 33163fd). Guards main() below: if GOLD_METADATA still claims
+# "human-reviewed / frozen" but a future edit to GOLD_QUERIES/
+# NEGATIVE_QUERIES changes the resolved query content, that's silent
+# drift against a supposedly-immutable artifact -- refuse to overwrite
+# rather than let a routine regen (e.g. for checklist/tooling reasons)
+# quietly rewrite frozen v1. A real correction bumps review_revision/
+# gold_set_version to a new, reopened version instead (see the
+# docstring block above GOLD_METADATA).
+FROZEN_V1_QUERY_DIGEST = "ae8cadf25b2005b46adf7af1f7646d3abae9b855be362897e22d073adbff44f8"
+
+
+def check_frozen_guard(gold_metadata: dict, generated_queries: list[dict]) -> None:
+    """Raise if gold_metadata claims frozen status but generated_queries drifted."""
+    if gold_metadata["status"] != "human-reviewed / frozen":
+        return
+    digest = query_digest(generated_queries)
+    if digest != FROZEN_V1_QUERY_DIGEST:
+        raise RuntimeError(
+            "Gold Set v1 is frozen. Query content drift detected "
+            f"(expected digest {FROZEN_V1_QUERY_DIGEST}, got {digest}). "
+            "Create a new gold_set_version/review_revision before "
+            "modifying it -- see the docstring above GOLD_METADATA."
+        )
 
 GOLD_QUERIES = [
     # --- exact_symbol (8) ---
@@ -282,6 +329,8 @@ def main() -> None:
         raise RuntimeError(f"Symbols referenced by gold queries not found in change_records: {sorted(missing_symbols)}")
     if missing_stability_facts:
         raise RuntimeError(f"Stability facts not found as an exact chunk match: {sorted(missing_stability_facts)}")
+
+    check_frozen_guard(GOLD_METADATA, gold)
 
     output = {"metadata": GOLD_METADATA, "queries": gold}
 

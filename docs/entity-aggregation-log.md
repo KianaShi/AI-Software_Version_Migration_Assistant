@@ -1163,3 +1163,76 @@ distinct next steps, not one:
 **Not done, per your explicit instruction to stop here**: no Stage 8A.3.
 Next is Stage 8B0 (fixed candidate-pool / output-k evaluation protocol)
 when you say go -- not started as part of this freeze.
+
+## PR review fix — CodeRabbit findings on `stage8a-gold-freeze`
+
+Branch pushed, tag `pydantic-gold-v1` pushed, PR opened against `main`.
+CodeRabbit reviewed and found three real problems in the tooling *around*
+the frozen artifact, not in the frozen artifact itself. You triaged all
+three as in-scope for this PR (not score-chasing, not algorithm changes)
+and this section is that fix, landed as a single small commit on the
+same branch -- the `pydantic-gold-v1` tag was not moved; it still points
+at `bb9efc8`.
+
+**1. Checklist stale (`pending_freeze`) -- MUST FIX.** The gold JSON's
+`status` was updated to `human-reviewed / frozen` at freeze time, but
+`data/gold/pydantic_gold_review_checklist.md` was never regenerated
+afterward, so the checked-in review artifact contradicted the source of
+truth it's supposed to reflect. Fix: no hand-edit -- reran
+`scripts/generate_gold_review_checklist.py`, which reads `status`
+straight from the JSON metadata, so the header now shows
+`` Status: `human-reviewed / frozen` `` correctly.
+
+**2. `change_retrieval` mislabeled excluded -- MUST FIX, same root cause
+as CodeRabbit's checklist comment.** `generate_gold_review_checklist.py`
+still compared `evaluation_scope` against the pre-Stage-8A.2 value
+`"retrieval"` (`scope = q.get("evaluation_scope", "retrieval")`), but the
+real core-scope value has been `"change_retrieval"` since Stage 8A.2 --
+so every one of the 42 core queries was incorrectly annotated
+"excluded from core Recall@K aggregate" in the checklist, directly
+contradicting the frozen benchmark's own definition of its core
+aggregate. Fixed the default and comparison to `"change_retrieval"`;
+regenerated. Verified by grep count on the regenerated file: 0 core
+queries carry the excluded-suffix note, 5 `stability` and 1
+`query_planner` do (exactly the 42/5/1 split).
+
+**3. Frozen Gold JSON could be silently overwritten by the generator --
+VALID, fixed with a minimal guard, not a version-management system.**
+The documented rule ("Stage 8B does not modify Gold Set v1") was policy
+only -- nothing in `generate_pydantic_gold_set.py` actually enforced it.
+Added `query_digest()`: a canonical SHA256 over the *resolved queries
+list only* (`json.dumps(..., sort_keys=True, separators=(",", ":"))`),
+deliberately excluding `GOLD_METADATA` so freeze-status/source_commit
+edits never perturb it. `FROZEN_V1_QUERY_DIGEST` is the digest computed
+once from the currently-frozen 48-query payload
+(`ae8cadf25b2005b46...bff44f8`). `check_frozen_guard(gold_metadata,
+generated_queries)` -- extracted as its own function specifically so it
+has direct unit tests, not just an inline check buried in `main()` --
+raises `RuntimeError` if `status == "human-reviewed / frozen"` and the
+freshly generated digest doesn't match. A real future correction still
+works exactly as documented: bump `review_revision`/`gold_set_version`
+and update `FROZEN_V1_QUERY_DIGEST` deliberately: silent drift is what's
+blocked, not a real, explicit reopening.
+
+**Files modified**: `scripts/generate_gold_review_checklist.py` (scope
+default/comparison fix), `scripts/generate_pydantic_gold_set.py`
+(`query_digest`, `FROZEN_V1_QUERY_DIGEST`, `check_frozen_guard`),
+`data/gold/pydantic_gold_review_checklist.md` (regenerated).
+
+**Files added**: `tests/test_gold_set_generation.py` (6 tests: digest
+determinism across key order, digest sensitivity to content drift, guard
+passes on matching digest, guard raises on drift, guard no-ops when not
+frozen, and a direct check that the *currently committed* frozen JSON's
+digest still equals `FROZEN_V1_QUERY_DIGEST` -- this last one is the real
+regression guard, since it fails the day someone edits `GOLD_QUERIES`/
+`NEGATIVE_QUERIES` without updating the constant).
+
+**Verification, no benchmark rerun**: retrieval algorithms and the gold
+query payload are both untouched by this fix (confirmed: `git diff` on
+`data/gold/pydantic_gold_queries.json` is empty after regenerating it
+through the guarded generator -- the digest check passing *is* that
+proof), so there's no reason the frozen baseline numbers would move.
+Instead ran an integrity check: digest match confirmed, 42/5/1 scope
+split unchanged, full suite 156 passed (150 prior + 6 new) with the same
+5 pre-existing unrelated `test_retriever.py`/`test_vector_store.py`
+failures, untouched as always.

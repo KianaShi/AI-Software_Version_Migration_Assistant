@@ -74,8 +74,12 @@ def main() -> None:
         lines.append("")
 
         for q in by_type[query_type]:
-            scope = q.get("evaluation_scope", "retrieval")
-            scope_note = "" if scope == "retrieval" else f" — **evaluation_scope={scope}, excluded from core Recall@K aggregate**"
+            scope = q.get("evaluation_scope", "change_retrieval")
+            scope_note = (
+                ""
+                if scope == "change_retrieval"
+                else f" — **evaluation_scope={scope}, excluded from core Recall@K aggregate**"
+            )
             lines.append(f"### `{q['query_id']}`{scope_note}")
             lines.append(f"**Query**: {q['query_text']}")
             lines.append(
