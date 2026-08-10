@@ -1530,15 +1530,20 @@ question against a bare comment.
   `or mention.normalized is None` to the existing early-return guard.
 
 **Skipped, with reason**: `PYL-W0105` ("string statement has no effect")
-on `tests/test_retrieval_prefix_stability.py`'s module docstring, placed
-after the imports rather than as the first statement. Valid per Python's
-own docstring rule, but this is the same placement used consistently
-across `retrieval.py`, `hybrid.py`, `filters.py`, `version_filter.py`,
-`evaluation.py`, and others since Stage 6 -- a deliberate, repo-wide
-convention, not something this one new test file introduced. Fixing it
-in isolation here would make this file inconsistent with the rest of the
-codebase; whether to change the convention repo-wide is a separate style
-decision, out of scope for this PR.
+on the triple-quoted string in `tests/test_retrieval_prefix_stability.py`,
+placed after the imports. To be precise about what the lint is actually
+catching: because it isn't the first statement in the file, it is *not*
+the module docstring (doesn't populate `__doc__`) -- it's a plain string
+expression Python evaluates and discards, exactly as DeepSource says.
+The lint is factually correct, not a false positive. Left unfixed anyway,
+because this same placement is used consistently across `retrieval.py`,
+`hybrid.py`, `filters.py`, `version_filter.py`, `evaluation.py`, and
+others since Stage 6 -- a deliberate, repo-wide convention (context after
+imports, not before), not something this one new test file introduced.
+Moving just this file's string literal above its imports would make it
+inconsistent with every other module in the codebase instead of
+consistent with none of them; adopting real module docstrings
+repo-wide is a separate, larger style decision, out of scope for this PR.
 
 **Verification**: full suite 174 passed (170 prior + 4 net new: the
 `candidate_k` test grew from 3 cases to 6, plus 1 new zero-is-valid
