@@ -56,6 +56,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             external_refs TEXT NOT NULL,
             replacement_symbol TEXT,
             parameters TEXT NOT NULL,
+            migration_action_text TEXT,
             source_type TEXT NOT NULL,
             source_document_id TEXT NOT NULL,
             raw_text TEXT NOT NULL
@@ -120,6 +121,7 @@ def _row_to_change_record(row: sqlite3.Row) -> ChangeRecord:
         external_refs=json.loads(row["external_refs"]),
         replacement_symbol=row["replacement_symbol"],
         parameters=json.loads(row["parameters"]),
+        migration_action_text=row["migration_action_text"],
         change_id=row["change_id"],
         source_type=row["source_type"],
         source_document_id=row["source_document_id"],
@@ -133,9 +135,9 @@ def insert_change_record(conn: sqlite3.Connection, change: ChangeRecord) -> None
         INSERT INTO change_records (
             change_id, symbol_name, symbol_package, symbol_kind,
             version_from, version_to, change_type, summary,
-            external_refs, replacement_symbol, parameters,
+            external_refs, replacement_symbol, parameters, migration_action_text,
             source_type, source_document_id, raw_text
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             change.change_id,
@@ -149,6 +151,7 @@ def insert_change_record(conn: sqlite3.Connection, change: ChangeRecord) -> None
             json.dumps(change.external_refs),
             change.replacement_symbol,
             json.dumps(change.parameters),
+            change.migration_action_text,
             change.source_type,
             change.source_document_id,
             change.raw_text,

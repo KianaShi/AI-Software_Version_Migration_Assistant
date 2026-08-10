@@ -889,3 +889,404 @@ facet redesign (recorded as a good idea for later, not built).
 **Gold set status: corrected, self-consistent, and re-verified against
 real pipeline output -- not yet declared v1.** Freeze remains your call,
 same as before this remediation pass.
+
+## Stage 8A.1 — Second-round Gold Set cleanup (your review of checklist v2)
+
+You reviewed checklist v2 against the official pydantic migration docs a
+second time and found the Stage 8A fixes were correct but incomplete: 5
+more issues that would still pollute freeze-quality evaluation. This
+section is that cleanup. Baseline: commit `6b89d9b`.
+
+### 1. `migration_action_text` -- status-only facts that actually had an action
+
+You found that `q_behav_02`/`q_behav_03`/`q_config_03` and the
+`GenericModel`/`ConstrainedStr` facts all had a real recommended action
+sitting right in their own evidence text ("use dicts instead", "use the
+`json_schema_extra` parameter instead", "subclass `BaseModel` and
+`Generic` directly instead", "use `Annotated` with `Field` constraints
+instead") that never made it into `replacement_symbol`, because
+`change_extraction.py`'s single-symbol keyword path (as opposed to the
+replacement-pattern fast path) never populated it at all. Your call: don't
+force these into `replacement_symbol` (not every migration is a clean
+1:1 symbol rename), add a separate free-text field instead.
+
+Added `ChangeAttributes.migration_action_text: str | None` (schema +
+`store.py` column + `linker.py` threading, same additive pattern as
+`replacement_symbol`/`parameters`). Extraction: a new
+`_ACTION_CLAUSE_RE` in `change_extraction.py` captures a trailing
+`"; ... instead[.]"` clause generically, applied inside `_build_change()`
+so it fires regardless of which extraction path produced the statement
+-- not a new keyword-table entry (that table is shared with `Field()`'s
+"no longer accepts", which should stay `SIGNATURE_CHANGED`; a global
+remap would have reclassified things nobody asked to reclassify). All 4
+facts you flagged now populate it correctly; verified directly against
+the rebuilt DB, not just by re-reading the regex. 3 new regression tests.
+
+### 2. `NoneStr` action + `stricturl` query
+
+`NoneStr` really is a documented alias for `None | str` -- corpus updated
+to state that and add "use `str | None` instead" (captured via the same
+action-clause regex). `stricturl` has no 1:1 replacement in the official
+guide; per your explicit principle (don't manufacture facts), the corpus
+stays status-only for it, and the *query* changed from "what do I need
+to change" (implies an action exists) to "Was `pydantic.stricturl`
+removed in v2?" (doesn't).
+
+### 3. Overstated wording in `q_behav_01` / `q_behav_03`
+
+`q_behav_01`'s corpus fact said non-equal-type models "share the exact
+same type" unconditionally -- true for non-generic models, but generic
+models allow some same-origin cases, so this overstated the real rule.
+Narrowed corpus fact and query to "non-generic models" specifically.
+`q_behav_03`'s query claimed `Field()` "raises a validation error" on
+extra kwargs -- the evidence only supports "unsupported, use
+`json_schema_extra` instead," not a specific exception type. Query
+reworded to not claim what isn't verified. Corpus text itself was already
+fine in both cases; only the gold query text overstated things.
+
+### 4. `q_neg_05` wasn't a valid negative
+
+Old query ("is custom validation still supported?") had
+`required_change_ids=[]` but its own `stability_evidence_ids` said
+"...only the decorator name changed from v1's `@validator`" -- that's
+*capability preserved, API migration required*, not *no migration
+change*. Scoring it as a clean negative would have polluted the
+negative-set's real purpose (testing against over-warning). Per your
+guidance, not worth a new taxonomy value (`capability_preserved_with_migration`)
+for one query -- replaced entirely with a clean, narrow, unconflated
+claim: "Do I still access individual field values as plain attributes
+(e.g. `model.field_name`) in pydantic v2?", backed by a new, real,
+unconflated "Stable in v2" bullet. The old `@field_validator` stability
+bullet was removed from `concepts.md` rather than left dangling, since it
+had the identical conflation problem baked into the corpus fact itself,
+not just the query.
+
+### 5. `q_amb_01` excluded from the core retrieval aggregate
+
+Added `GoldQuery.evaluation_scope` (default `"retrieval"`;
+`"query_planner"` for `q_amb_01`). Its 3-symbol required set is an
+editorial choice about what an underspecified query "should" mean --
+there's no single correct retrieval target, so scoring it in the main
+Dense/BM25/Hybrid Recall@K table penalizes retrieval for a question
+without one gold interpretation. `run_pydantic_benchmark.py` now filters
+`evaluation_scope != "retrieval"` queries out of the core aggregate/
+per-type/CSV, and reports them in a separate section instead (still
+computed, still visible, just not folded into the headline numbers).
+`underspecified_symbol` as a *taxonomy* label is unchanged and still
+correct per your Stage 8A judgment -- this is an orthogonal scoring-scope
+flag, not a taxonomy redesign, so it doesn't reopen the "don't expand
+taxonomy this stage" boundary.
+
+### Rebuild, tests, re-run
+
+Rebuild: same 76 chunks / 34 `UnresolvedChange` / 27 `ChangeRecord`s as
+before (these edits rephrased/completed existing facts, not added new
+distinct ones). Full audit re-run
+(`data/gold/deprecated_action_audit.md`): of 15 `DEPRECATED`/`MOVED`/
+`REMOVED`-plus-flagged records, 14 now carry a real action, 1
+(`stricturl`) intentionally doesn't. Regenerated the gold set (all 48
+resolve cleanly, zero missing symbols/stability facts) and checklist v3
+(now shows `migration_action_text` and `evaluation_scope` per query).
+
+Full suite: **150 passed** (+3: action-clause extraction, no-action-clause
+control, linker threading), same 5 pre-existing failures, untouched.
+
+Benchmark re-run, core aggregate now over 47 queries (`q_amb_01`
+reported separately): Dense R@5 0.968, BM25 0.830, Hybrid 0.957, Hybrid+
+version-filter 0.936. Only 2 core-scope queries remain below Recall@5=1.0
+under Hybrid (`q_nl_02`, `q_nl_03`), both re-classified RANKING with the
+same pool-size-consistent methodology from Stage 8A (dense finds both
+within top 20, hybrid's real 40-candidate fusion pool ranks them lower).
+`q_amb_01` alone: 0.000 across all four modes, classified
+UNDERSPECIFIED_SYMBOL, excluded from the headline table as described
+above. See README's Benchmark Results section for full tables.
+
+**Files added**: none new (this stage extended existing files).
+
+**Files modified**: `src/entities/models.py` (`migration_action_text`
+field), `src/entities/store.py` (schema/row-mapping), `src/aggregation/linker.py`
+(threading), `src/extraction/change_extraction.py` (`_ACTION_CLAUSE_RE`),
+`src/retrieval/evaluation.py` (`evaluation_scope` field on `GoldQuery`),
+`data/corpus/pydantic/migration_guide.md` (NoneStr action,
+`__eq__` narrowed to non-generic), `data/corpus/pydantic/concepts.md`
+(`q_neg_05` stability fact swapped), `scripts/generate_pydantic_gold_set.py`
+(query wording, `stricturl`/`q_neg_05` changes, `evaluation_scope`),
+`scripts/generate_gold_review_checklist.py` (checklist v3 fields),
+`scripts/run_pydantic_benchmark.py` (core-vs-scoped-out split),
+`data/gold/deprecated_action_audit.md` (re-audited), README, this log,
+plus 3 new regression tests.
+
+**Gold set status: corrected twice now, self-consistent, re-verified --
+still not declared v1.** Waiting on your final pass over checklist v3
+and `deprecated_action_audit.md` before that decision, exactly as before.
+
+## Stage 8A.2 — Scope split, gold set metadata, final wording pass
+
+You reviewed checklist v3 and confirmed the content fixes were now
+correct, but asked for four more structural/scope/wording changes before
+you'd consider re-running the benchmark as the real baseline. You were
+explicit up front: whatever Dense/BM25/Hybrid come out to after these
+four, you won't keep revising gold based on score. Baseline: commit
+`d549883`.
+
+### 1-2. Three-way `evaluation_scope`, 42-query core, gold set metadata
+
+Split `evaluation_scope` from binary (`retrieval`/`query_planner`) into
+three values: `change_retrieval` (42 queries -- the core aggregate),
+`stability` (the 5 negatives -- `required_change_ids` is always
+vacuously empty, so change-level Recall@K is trivially 1.0 for them
+regardless of retrieval quality, which was quietly propping up the
+Stage 8A.1 47-query aggregate with 5 free 1.0s that measured nothing),
+and `query_planner` (unchanged, `q_amb_01`). `run_pydantic_benchmark.py`
+now filters to `change_retrieval` for the core aggregate/per-type/CSV
+and reports `stability` and `query_planner` in two separate labeled
+sections instead of one combined "scoped out" bucket.
+
+Added a `metadata` block to the gold JSON itself (previously a bare
+array; now `{"metadata": {...}, "queries": [...]}`) --
+`name: "Pydantic Gold Set v1"`, `migration_scope: "1.10.x -> 2.x"`,
+`review_revision: 3`, `status: "pending_freeze"`, `source_commit: null`.
+`status`/`source_commit` are deliberately left unset here: this script
+never declares the gold set frozen itself, and `source_commit` has an
+inherent chicken-and-egg problem (the commit that introduces a value
+can't contain its own hash) -- both get filled in only at the actual
+freeze moment, a separate explicit action, exactly matching your own
+stated pipeline (commit → human freeze, not the same step). Updated all
+four scripts that read the gold JSON (`run_pydantic_benchmark.py`,
+`generate_gold_review_checklist.py`, `diagnose_failed_queries.py`,
+plus the generator itself) for the new `{"metadata", "queries"}` shape.
+
+### 3. Wording tightened, semantics clarified
+
+`q_neg_01`/`q_neg_02` reworded to mirror their stability evidence text
+closely (`"still exist as the main way"` → `"still the primary way"`,
+`"still work the same way"` → `"still behave the same way"`) rather than
+a looser paraphrase that technically claimed slightly more than the
+evidence states.
+
+Added a "Field semantics" section to `deprecated_action_audit.md`:
+`replacement_symbol` names what to call, not a guarantee the migration
+is purely mechanical -- `BaseModel.from_orm` → `model_validate` is
+correct as a pointer, but the complete action also requires enabling
+`from_attributes` on `model_config` first, which lives in the evidence
+`raw_text`, not in the field itself. Documented so a future consumer
+(human or LLM) doesn't treat `replacement_symbol` alone as "the entire
+diff."
+
+### Rebuild, tests, re-run
+
+Full suite: **150 passed** (no new tests this round -- purely structural/
+scope/wording changes, no new extraction behavior to lock in). Same 5
+pre-existing failures, untouched.
+
+Gold set regenerated: 48 queries, `evaluation_scope` distribution
+42/5/1 (`change_retrieval`/`stability`/`query_planner`) exactly as
+designed. Benchmark re-run, core aggregate now over 42 queries (the 5
+trivially-1.0 negatives no longer inflate it):
+
+| | Dense | BM25 | Hybrid | Hybrid+vf |
+|---|---|---|---|---|
+| Recall@5 | 0.964 | 0.810 | 0.952 | 0.929 |
+| MRR | 0.889 | 0.766 | 0.875 | 0.863 |
+
+Only 2 of 42 queries remain below Recall@5=1.0 under Hybrid (`q_nl_02`
+fails under every mode, `q_nl_03` only under Hybrid) -- both
+re-classified RANKING with the same pool-size-consistent methodology
+from Stage 8A.1. No new failure categories surfaced; this round changed
+scope/wording/metadata, not facts, so no new content-level findings were
+expected and none appeared.
+
+**Files modified**: `scripts/generate_pydantic_gold_set.py` (evaluation_scope
+rename+split, `GOLD_METADATA`, wording), `scripts/run_pydantic_benchmark.py`
+(metadata-aware `load_gold()`, 3-way scope split, separate reporting),
+`scripts/generate_gold_review_checklist.py` (metadata-aware loading,
+header), `scripts/diagnose_failed_queries.py` (metadata-aware loading),
+`src/retrieval/evaluation.py` (`evaluation_scope` default renamed),
+`data/gold/deprecated_action_audit.md` (semantics note), README.
+
+**Gold set status: corrected three times now, self-consistent, matches
+the numbers you said you'd accept regardless of which retriever wins.**
+Still not declared frozen -- per your own pipeline, that's the next,
+separate step, on your side.
+
+## Gold Set v1 FROZEN
+
+You confirmed the Stage 8A.2 checklist and numbers, and made the freeze
+call. Isolated metadata-only commit `bb9efc8` (deliberately separate from
+the Stage 8A.2 content commit, per your instruction): `GOLD_METADATA` in
+`scripts/generate_pydantic_gold_set.py` updated to
+`status: "human-reviewed / frozen"`, `source_commit: "33163fd"` (the
+last content commit -- the actual snapshot you reviewed; this freeze
+commit's only job is to label that snapshot frozen, not change it --
+avoids the self-referencing-hash problem entirely, as you pointed out).
+Added `gold_set_version: "1"` as the externally-referenced release
+identifier, distinct from `review_revision` (which stays as the internal
+count of correction rounds: 3, Stage 8A → 8A.1 → 8A.2). Regenerated the
+gold JSON via the script (not hand-edited) and confirmed via `git diff`
+that only the `metadata` block changed -- the 48 `queries` are
+byte-identical to `33163fd`, exactly as expected since nothing about the
+underlying facts changed in this step. Tagged `pydantic-gold-v1`
+(annotated). README and this log updated to reflect frozen status in a
+separate, still-small follow-up commit.
+
+**Rule in effect starting now, stated explicitly by you and recorded
+here so it isn't relitigated later**: Stage 8B does not modify Gold Set
+v1 to make retrieval scores look better. If an experiment underperforms
+against the frozen baseline below, the fix is to change retrieval, not
+the gold set. Reopening the gold set requires a real factual error,
+wrong evidence, wrong `required_change_id`, or an invalid query --
+never a low score -- and any such reopening becomes a new revision
+(v1.1/v2), never a silent edit to v1.
+
+**Frozen baseline** (42-query `change_retrieval` core, commit `33163fd`,
+reproducible via `python -m scripts.build_pydantic_benchmark_corpus` →
+`generate_pydantic_gold_set` → `run_pydantic_benchmark`):
+
+| | Dense | BM25 | Hybrid | Hybrid+vf |
+|---|---|---|---|---|
+| Recall@5 | 0.964 | 0.810 | 0.952 | 0.929 |
+| MRR | 0.889 | 0.766 | 0.875 | 0.863 |
+
+Dense > Hybrid > BM25 on Recall@5, and naive 1:1-weighted RRF fusion does
+not improve on a strong Dense retriever here -- a real, examined finding
+(see README "Hybrid does not strictly dominate Dense"), not an artifact
+of an uncorrected gold set. The two remaining failures point at two
+distinct next steps, not one:
+
+- `q_nl_02` -- fails under every mode (Dense included, rank 20/50) →
+  candidate/semantic ranking problem → reranker.
+- `q_nl_03` -- Dense succeeds (rank 4, clean top-5), Hybrid fails (real
+  fusion pool rank 13/40) → fusion dilution problem, not a ranking-model
+  problem → fusion/weighting ablation, or reranker over the union of
+  candidates rather than the fused list.
+
+**Not done, per your explicit instruction to stop here**: no Stage 8A.3.
+Next is Stage 8B0 (fixed candidate-pool / output-k evaluation protocol)
+when you say go -- not started as part of this freeze.
+
+## PR review fix — CodeRabbit findings on `stage8a-gold-freeze`
+
+Branch pushed, tag `pydantic-gold-v1` pushed, PR opened against `main`.
+CodeRabbit reviewed and found three real problems in the tooling *around*
+the frozen artifact, not in the frozen artifact itself. You triaged all
+three as in-scope for this PR (not score-chasing, not algorithm changes)
+and this section is that fix, landed as a single small commit on the
+same branch -- the `pydantic-gold-v1` tag was not moved; it still points
+at `bb9efc8`.
+
+**1. Checklist stale (`pending_freeze`) -- MUST FIX.** The gold JSON's
+`status` was updated to `human-reviewed / frozen` at freeze time, but
+`data/gold/pydantic_gold_review_checklist.md` was never regenerated
+afterward, so the checked-in review artifact contradicted the source of
+truth it's supposed to reflect. Fix: no hand-edit -- reran
+`scripts/generate_gold_review_checklist.py`, which reads `status`
+straight from the JSON metadata, so the header now shows
+`` Status: `human-reviewed / frozen` `` correctly.
+
+**2. `change_retrieval` mislabeled excluded -- MUST FIX, same root cause
+as CodeRabbit's checklist comment.** `generate_gold_review_checklist.py`
+still compared `evaluation_scope` against the pre-Stage-8A.2 value
+`"retrieval"` (`scope = q.get("evaluation_scope", "retrieval")`), but the
+real core-scope value has been `"change_retrieval"` since Stage 8A.2 --
+so every one of the 42 core queries was incorrectly annotated
+"excluded from core Recall@K aggregate" in the checklist, directly
+contradicting the frozen benchmark's own definition of its core
+aggregate. Fixed the default and comparison to `"change_retrieval"`;
+regenerated. Verified by grep count on the regenerated file: 0 core
+queries carry the excluded-suffix note, 5 `stability` and 1
+`query_planner` do (exactly the 42/5/1 split).
+
+**3. Frozen Gold JSON could be silently overwritten by the generator --
+VALID, fixed with a minimal guard, not a version-management system.**
+The documented rule ("Stage 8B does not modify Gold Set v1") was policy
+only -- nothing in `generate_pydantic_gold_set.py` actually enforced it.
+Added `query_digest()`: a canonical SHA256 over the *resolved queries
+list only* (`json.dumps(..., sort_keys=True, separators=(",", ":"))`),
+deliberately excluding `GOLD_METADATA` so freeze-status/source_commit
+edits never perturb it. `FROZEN_V1_QUERY_DIGEST` is the digest computed
+once from the currently-frozen 48-query payload
+(`ae8cadf25b2005b46...bff44f8`). `check_frozen_guard(gold_metadata,
+generated_queries)` -- extracted as its own function specifically so it
+has direct unit tests, not just an inline check buried in `main()` --
+raises `RuntimeError` if `status == "human-reviewed / frozen"` and the
+freshly generated digest doesn't match. A real future correction still
+works exactly as documented: bump `review_revision`/`gold_set_version`
+and update `FROZEN_V1_QUERY_DIGEST` deliberately: silent drift is what's
+blocked, not a real, explicit reopening.
+
+**Files modified**: `scripts/generate_gold_review_checklist.py` (scope
+default/comparison fix), `scripts/generate_pydantic_gold_set.py`
+(`query_digest`, `FROZEN_V1_QUERY_DIGEST`, `check_frozen_guard`),
+`data/gold/pydantic_gold_review_checklist.md` (regenerated).
+
+**Files added**: `tests/test_gold_set_generation.py` (6 tests: digest
+determinism across key order, digest sensitivity to content drift, guard
+passes on matching digest, guard raises on drift, guard no-ops when not
+frozen, and `test_current_frozen_gold_queries_match_committed_digest`,
+which checks only that the *checked-in* `pydantic_gold_queries.json`
+still hashes to `FROZEN_V1_QUERY_DIGEST` -- it reads the committed
+artifact directly and does **not** run `GOLD_QUERIES`/`NEGATIVE_QUERIES`
+through the resolution pipeline, so it cannot by itself catch someone
+editing those definitions in the script. That drift is instead caught
+at generation time: `main()` resolves the definitions into `gold` and
+calls `check_frozen_guard(GOLD_METADATA, gold)` before the file is ever
+written, so a source-level edit either fails loudly there or the
+resulting JSON simply wouldn't match what's committed -- a full
+`run_pipeline()` integration test asserting this end-to-end was
+considered and deliberately left out of this PR as more than the fix
+needed).
+
+**Verification, no benchmark rerun**: retrieval algorithms and the gold
+query payload are both untouched by this fix (confirmed: `git diff` on
+`data/gold/pydantic_gold_queries.json` is empty after regenerating it
+through the guarded generator -- the digest check passing *is* that
+proof), so there's no reason the frozen baseline numbers would move.
+Instead ran an integrity check: digest match confirmed, 42/5/1 scope
+split unchanged, full suite 156 passed (150 prior + 6 new) with the same
+5 pre-existing unrelated `test_retriever.py`/`test_vector_store.py`
+failures, untouched as always.
+
+## PR review fix, round 2 — CodeRabbit findings on the round-1 fix commit
+
+Second CodeRabbit pass reviewed `01e5825` itself and found two more
+issues. Both verified against current code before fixing; both were
+real.
+
+**1. Overstated claim about what the digest regression test covers.**
+`test_current_frozen_gold_queries_match_committed_digest` reads
+`data/gold/pydantic_gold_queries.json` straight off disk and checks it
+against `FROZEN_V1_QUERY_DIGEST` -- it never touches `GOLD_QUERIES`/
+`NEGATIVE_QUERIES` or runs them through the resolution pipeline, so the
+log's claim that it "fails the day someone edits GOLD_QUERIES/
+NEGATIVE_QUERIES" was wrong: editing those definitions and rerunning the
+generator is what `check_frozen_guard()` inside `main()` catches
+(pre-write, before the JSON file changes at all) -- this test only
+catches the file being hand-edited or the guard being bypassed. Doc
+corrected above to describe the actual coverage split. Per your
+instruction, not adding a full `run_pipeline()` integration test in this
+PR -- `check_frozen_guard()` already has direct unit coverage, and an
+end-to-end test through the real pipeline is more machinery than this
+fix needs.
+
+**2. `evidence_links` query had no `ORDER BY`.** The
+`SELECT change_id, evidence_id FROM evidence_links` populating
+`change_to_evidence_ids` relied on SQLite's unspecified row order for an
+unindexed scan -- harmless today, but `relevant_evidence_ids` is a list
+(digest-sensitive to element order, unlike the dict-key ordering
+`query_digest()` already normalizes via `sort_keys=True`), so a future
+DB engine/index/SQLite-version change could silently reorder it and trip
+the frozen-guard on a rebuild that changed nothing real. Added
+`ORDER BY change_id, evidence_id`. Regenerated through the guarded
+generator: digest matched (guard didn't raise), and `git diff` on
+`data/gold/pydantic_gold_queries.json` was empty -- the implicit order
+was already correct, this just stopped relying on an unspecified
+guarantee for it.
+
+**Files modified**: `scripts/generate_pydantic_gold_set.py` (`ORDER BY`
+on the `evidence_links` query), `docs/entity-aggregation-log.md` (this
+entry + corrected description of the digest test's coverage).
+
+**Verification**: frozen gold JSON byte-identical (empty diff), full
+suite 156 passed, same 5 pre-existing unrelated failures. No benchmark
+rerun (retrieval code and gold payload both untouched), tag
+`pydantic-gold-v1` not moved (still `bb9efc8`).

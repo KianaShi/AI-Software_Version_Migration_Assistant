@@ -1,30 +1,68 @@
-# Stage 8A Audit: deprecated-only vs. actionable migration facts
+# Stage 8A / 8A.1 / 8A.2 Audit: deprecated-only vs. actionable migration facts
 
-Systematic check (§2D of the Stage 8A brief) of every `DEPRECATED`/`MOVED`
-change record for cases where the gold set said only "X is deprecated" /
-"X moved" without capturing the actual recommended migration action, when
-the corpus evidence supported a clearer one.
+Systematic check of every `DEPRECATED`/`MOVED`/`REMOVED` change record for
+cases where the gold set said only "X is deprecated/moved/removed"
+without capturing the actual recommended migration action, when corpus
+evidence supported a clearer one. `REPLACEMENT`, `SIGNATURE_CHANGED`, and
+`BEHAVIOR_CHANGED` records aren't included here since they either already
+require a `replacement_symbol` or self-describe a behavior change, not a
+compliance-only status.
 
-Audited: all `change_type IN ('DEPRECATED', 'MOVED')` records against the
-rebuilt corpus (11 total). No other change_types (`REPLACEMENT`,
-`REMOVED`, `SIGNATURE_CHANGED`, `BEHAVIOR_CHANGED`) carry a "deprecated
-with no action" ambiguity by construction -- `REMOVED` genuinely has no
-replacement to state, and the others already require a `replacement_symbol`
-or describe a self-contained behavior change.
+## Field semantics (Stage 8A.2 clarification)
 
-| Symbol | Type | Before this audit | After | Action added? |
-|---|---|---|---|---|
-| `BaseModel.from_orm` | DEPRECATED | replacement_symbol=None, evidence said only "deprecated in favor of setting `from_attributes`..." (phrasing too loose for the extractor to capture a target symbol) | → `BaseModel.model_validate`, evidence states the full action: enable `from_attributes` on `model_config`, then call `model_validate()` | **Yes** (§2C) |
-| `BaseModel.parse_file` | DEPRECATED | replacement_symbol=None, evidence said only "deprecated with no direct v2 replacement" | → `BaseModel.model_validate`, evidence states: load the file yourself, pass the parsed data to `model_validate()` | **Yes** (§2B) |
-| `pydantic.tools.parse_obj_as` | MOVED (was) | replacement_symbol=`pydantic.deprecated.tools.parse_obj_as` -- pointed at a namespace whose own name says "deprecated", not a real recommended migration | changed to DEPRECATED → `TypeAdapter` (the real recommended replacement per the official migration guide); legacy import path kept as a secondary sentence, not the primary action | **Yes** (§2A) |
-| `@root_validator` | DEPRECATED | → `@model_validator` | unchanged -- already had a real action | No (already correct) |
-| `@validator` | DEPRECATED | → `@field_validator` | unchanged -- already had a real action | No (already correct) |
-| `BaseModel.parse_raw` | DEPRECATED | → `BaseModel.model_validate_json` | unchanged -- already had a real action | No (already correct) |
-| `BaseSettings`, `color`, `error_wrappers.ValidationError`, `utils.to_camel`, `utils.to_lower_camel` | MOVED | all already had a `replacement_symbol` (import path) | `utils.to_camel`'s target was factually wrong (§1A), not action-less -- fixed as a factual correction, not an action-completeness gap | No (correctness fix, not an action-completeness gap; see main Stage 8A log entry) |
+Two ways a record counts as "has an action", and they are **not
+interchangeable**:
 
-**Conclusion**: 3 of 11 records were deprecated/moved-only without a
-supported action (`from_orm`, `parse_file`, `parse_obj_as`); all 3 now
-carry the real recommended action, sourced from the same official
-migration guide facts already grounding the rest of the corpus -- nothing
-invented. The remaining 8 already had actions from Stage 7. No record was
-left "status-only" where the corpus evidence could have supported more.
+- **`replacement_symbol`**: the single symbol name to call/import
+  instead. This is a naming pointer, not a guarantee that the migration
+  is a purely mechanical find-and-replace. `BaseModel.from_orm` →
+  `replacement_symbol = BaseModel.model_validate` is correct, but the
+  *complete* action also requires enabling `from_attributes` on
+  `model_config` first -- that extra step lives in the evidence's
+  `raw_text`, not in `replacement_symbol` itself. Treat
+  `replacement_symbol` as "what to call", not "the entire diff."
+- **`migration_action_text`** (added Stage 8A.1): free text for
+  recommendations that aren't a clean symbol swap at all (e.g. "use
+  dicts instead", "subclass `BaseModel` and `Generic` directly instead").
+  Forcing these into `replacement_symbol` would misrepresent them as
+  renames they aren't.
+
+A record can have `replacement_symbol` alone, `migration_action_text`
+alone, or (rarely) neither with the surrounding evidence still containing
+extra detail a human/LLM consumer would need to read in full -- callers
+that need the *complete* migration action should read the evidence
+`raw_text`, not assume either field alone is sufficient.
+
+| Symbol | Type | Action | Source |
+|---|---|---|---|
+| `BaseModel.dict` etc. (8 `REPLACEMENT` facts) | REPLACEMENT | `replacement_symbol` | not in this audit's scope (see note above) |
+| `@root_validator` | DEPRECATED | `replacement_symbol` → `@model_validator` | Stage 7 |
+| `@validator` | DEPRECATED | `replacement_symbol` → `@field_validator` | Stage 7 |
+| `BaseModel.parse_raw` | DEPRECATED | `replacement_symbol` → `BaseModel.model_validate_json` | Stage 7 |
+| `BaseModel.from_orm` | DEPRECATED | `replacement_symbol` → `BaseModel.model_validate` | Stage 8A §2C (was `None` -- loose phrasing broke the tight-pattern extractor) |
+| `BaseModel.parse_file` | DEPRECATED | `replacement_symbol` → `BaseModel.model_validate` | Stage 8A §2B (was `None` -- "no direct v2 replacement" was the old, incomplete phrasing) |
+| `pydantic.tools.parse_obj_as` | DEPRECATED | `replacement_symbol` → `TypeAdapter` | Stage 8A §2A (was `MOVED` → the deprecated import path itself, not a real recommendation) |
+| `BaseSettings`, `color`, `error_wrappers.ValidationError` | MOVED | `replacement_symbol` (import path) | Stage 7 |
+| `pydantic.utils.to_camel` | MOVED | `replacement_symbol` → `alias_generators.to_pascal` | Stage 8A §1A (was wrong: `to_camel` -- a real fact, not an action-completeness gap) |
+| `pydantic.utils.to_lower_camel` | MOVED | `replacement_symbol` → `alias_generators.to_camel` | Stage 8A §1A (added; the real `to_camel` mapping) |
+| `pydantic.generics.GenericModel` | REMOVED | `migration_action_text`: "subclass `BaseModel` and `Generic` directly instead" | Stage 8A.1 §1 (was status-only) |
+| `pydantic.ConstrainedStr` | REMOVED | `migration_action_text`: "use `Annotated` with `Field` constraints instead" | Stage 8A.1 §1 (was status-only) |
+| `pydantic.NoneStr` | REMOVED | `migration_action_text`: "use `str \| None` instead" | Stage 8A.1 §2 (was status-only; `NoneStr` is a documented alias for `None \| str`, so the replacement type is real, not invented) |
+| `Field` (arbitrary JSON-schema kwargs) | SIGNATURE_CHANGED* | `migration_action_text`: "use the `json_schema_extra` parameter instead" | Stage 8A.1 §1 (was status-only) |
+| `pydantic.dataclasses` (tuple input) | BEHAVIOR_CHANGED* | `migration_action_text`: "use dicts instead" | Stage 8A.1 §1 (was status-only) |
+| `pydantic.stricturl` | REMOVED | **none -- intentional** | official migration guide lists no 1:1 replacement for it; gold query (`q_single_04`) rewritten to "Was `pydantic.stricturl` removed in v2?" rather than implying an action exists |
+
+\* `Field` and `pydantic.dataclasses` are technically outside the
+`DEPRECATED`/`MOVED`/`REMOVED` scope stated above (they're
+`SIGNATURE_CHANGED`/`BEHAVIOR_CHANGED`) but are included here because
+they were flagged in the same review round for the identical
+status-only-despite-available-action problem.
+
+**Conclusion**: of 15 audited `DEPRECATED`/`MOVED`/`REMOVED` records, 14
+now carry a real recommended action (11 via `replacement_symbol`, 3 via
+`migration_action_text`); the 1 that doesn't (`stricturl`) is
+intentionally status-only because no action is verifiable from the
+official source, and the corresponding gold query was reworded rather
+than left implying one exists. No record was left incomplete where the
+corpus evidence could have supported more, and no action was invented
+where the corpus didn't support one.

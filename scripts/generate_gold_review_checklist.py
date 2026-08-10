@@ -25,7 +25,9 @@ FLAGGED_TYPES = {
 
 
 def main() -> None:
-    gold = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    data = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    metadata = data["metadata"]
+    gold = data["queries"]
     chunks, conn, _stats = run_pipeline()
     conn.row_factory = sqlite3.Row
     chunks_by_id = {c.chunk_id: c for c in chunks}
@@ -34,11 +36,12 @@ def main() -> None:
     evidence = {r["evidence_id"]: dict(r) for r in conn.execute("SELECT * FROM evidence")}
 
     lines = [
-        "# Pydantic Gold Set v2 — Human Review Checklist",
+        f"# {metadata['name']} — Human Review Checklist (review_revision={metadata['review_revision']})",
+        "",
+        f"Scope: {metadata['migration_scope']}. Status: `{metadata['status']}`.",
         "",
         "Generated from `data/gold/pydantic_gold_queries.json` against the live "
-        "corpus/entities.db, rebuilt fresh by this script (Stage 8A remediation "
-        "commit). For each query, review:",
+        "corpus/entities.db, rebuilt fresh by this script. For each query, review:",
         "",
         "1. Is the query itself reasonable/realistic?",
         "2. Are `required_change_ids` correct and complete?",
@@ -71,7 +74,13 @@ def main() -> None:
         lines.append("")
 
         for q in by_type[query_type]:
-            lines.append(f"### `{q['query_id']}`")
+            scope = q.get("evaluation_scope", "change_retrieval")
+            scope_note = (
+                ""
+                if scope == "change_retrieval"
+                else f" — **evaluation_scope={scope}, excluded from core Recall@K aggregate**"
+            )
+            lines.append(f"### `{q['query_id']}`{scope_note}")
             lines.append(f"**Query**: {q['query_text']}")
             lines.append(
                 f"**from/to version**: {q.get('from_version')} → {q.get('to_version')}"
@@ -88,11 +97,12 @@ def main() -> None:
                         lines.append(f"- `{cid}` — ⚠️ NOT FOUND IN DB")
                         continue
                     status_label = c["change_type"]
-                    action = (
-                        f"**Migration action: use `{c['replacement_symbol']}`**"
-                        if c["replacement_symbol"]
-                        else "_(no replacement -- status-only fact; see deprecated_action_audit.md)_"
-                    )
+                    if c["replacement_symbol"]:
+                        action = f"**Migration action: use `{c['replacement_symbol']}`**"
+                    elif c.get("migration_action_text"):
+                        action = f"**Migration action: {c['migration_action_text']}**"
+                    else:
+                        action = "_(no replacement/action found in evidence -- status-only fact; see deprecated_action_audit.md)_"
                     lines.append(
                         f"- `{cid}` — **{c['symbol_name']}** ({status_label}). {action}. "
                         f"version_to={c['version_to']}"
