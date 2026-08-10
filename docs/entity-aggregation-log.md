@@ -1290,3 +1290,114 @@ entry + corrected description of the digest test's coverage).
 suite 156 passed, same 5 pre-existing unrelated failures. No benchmark
 rerun (retrieval code and gold payload both untouched), tag
 `pydantic-gold-v1` not moved (still `bb9efc8`).
+
+## Stage 8B0 — Decouple candidate_k from output_k in retrieval
+
+Scope, as instructed: fix the retrieval evaluation protocol only --
+`candidate_k` (how many ranked candidates are fetched/fused before
+filtering) made independent of `output_k` (how many of those survive as
+the final result), so Top5/Top10/Top20 are guaranteed nested prefixes of
+one ranking. Explicitly excluded and untouched: reranker, RRF weighting
+(`RRF_K` still 60, no per-source weight), chunking, query rewriting, and
+Gold Set v1 (still frozen at `bb9efc8`, `pydantic-gold-v1` tag not
+moved).
+
+**The bug, restated precisely**: `retrieve_dense`/`retrieve_sparse`/
+`retrieve_hybrid` used to compute `fetch_k = top_k * 4`, so a single
+`top_k` argument controlled both how many candidates were pulled *and*
+how many were returned -- calling the same retriever with `top_k=5` vs.
+`top_k=10` queried genuinely different candidate pools, not just
+different slice lengths of one pool. This is provably harmless for Dense
+and Sparse alone: each is a single deterministic ranking, and widening
+the fetch only appends lower-ranked candidates after the ones a narrower
+fetch already had, so post-filter re-ranking never reorders the shared
+prefix. It is **not** harmless for Hybrid: RRF only assigns a nonzero
+score to a chunk that appears in at least one of the two fetched
+rankings, so a chunk absent from a narrower pool contributes zero credit
+from that side; admitting it at a wider pool can let it out-accumulate
+chunks that were already ranked near the top of the narrower pool's
+fused result -- not merely extend the list, reorder it. This is the
+exact mechanism documented in Stage 8A behind `scripts/
+diagnose_failed_queries.py`'s manual fetch_k reconstruction (the
+`q_multi_02` false-negative under a wider diagnostic pool). Before this
+stage, that reconstruction workaround was necessary precisely because
+the production API had no way to ask for "the same candidate pool, sliced
+differently" -- Top5 and Top10 from two separate calls were not
+comparable at all.
+
+**Fix**: `src/retrieval/retrieval.py` -- new module constant
+`CANDIDATE_K = 40`, and all three `retrieve_*` functions now take
+`output_k` (default 10, was `top_k`) and `candidate_k` (default
+`CANDIDATE_K`) as independent parameters. Every call fetches/fuses over
+exactly `candidate_k` candidates regardless of `output_k`; `output_k`
+only slices the already-computed, already-filtered result at the end.
+Because the underlying ranked-and-filtered list no longer depends on
+`output_k` at all, `output_k=5`/`10`/`20` against the same `candidate_k`
+are guaranteed prefixes of each other by construction of list slicing --
+not something that needs re-verifying per query, just a property of the
+code shape. Added `_check_output_k()`: raises `ValueError` if
+`output_k > candidate_k`, since silently truncating below the requested
+depth would be a worse failure mode than refusing.
+
+`CANDIDATE_K = 40` was chosen to exactly match the old effective pool
+size at the benchmark's `top_k=10` (`10 * 4 = 40`), specifically so this
+refactor is a pure architecture fix, not a silent behavior change to the
+frozen baseline -- confirmed below.
+
+**Call sites updated** (mechanical rename + explicit `candidate_k`,
+no behavior change intended):
+- `scripts/run_pydantic_benchmark.py`: `TOP_K` renamed `OUTPUT_K`
+  (still 10); `make_run_query()`'s three `retrieve_*` calls pass
+  `output_k=OUTPUT_K, candidate_k=CANDIDATE_K` explicitly (imported from
+  `retrieval.py`, so this runner can't silently drift from what
+  retrieval.py actually uses).
+- `scripts/diagnose_failed_queries.py`: this script's entire reason for
+  manually reconstructing Hybrid's fused ranking via direct
+  `query_dense`/`query_sparse`/`reciprocal_rank_fusion` calls was to work
+  around the old pool-size-follows-top_k coupling. With `candidate_k`
+  now fixed independent of `output_k`, that workaround is unnecessary --
+  simplified `hybrid_rank_at_benchmark_pool_size()` to call
+  `retrieve_hybrid(..., output_k=CANDIDATE_K)` directly through the
+  public API and read off the real candidate pool, removing the
+  duplicated fusion logic entirely. `_FETCH_MULTIPLIER` no longer exists
+  (this script imported it directly, so this fix was required, not
+  optional); deep-look `retrieve_dense`/`retrieve_sparse` calls
+  (previously `top_k=50`) now pass `output_k=50, candidate_k=50`
+  explicitly, since 50 exceeds the new default `candidate_k=40`.
+- `tests/test_retrieval_integration.py`: `top_k=` renamed `output_k=` at
+  all call sites (mechanical, no assertions changed).
+
+**New regression tests**: `tests/test_retrieval_prefix_stability.py` (8
+tests) -- a 25-chunk corpus sharing the query's terms (so Dense and BM25
+both return >=20 non-zero candidates), asserting for each of
+Dense/Sparse/Hybrid that `output_k=10` results are exactly
+`output_k=20`'s first 10, and `output_k=5` is exactly `output_k=10`'s
+first 5 -- including for Hybrid, the exact case that was broken before
+this stage. Also covers: `output_k > candidate_k` raises `ValueError`
+for all three retrievers; `CANDIDATE_K == 40`; explicitly widening
+`candidate_k` allows a deeper `output_k` than the default.
+
+**Verification that the frozen baseline didn't move**: reran
+`scripts/run_pydantic_benchmark.py` against the fixed retrieval code.
+Aggregate numbers are byte-identical to the frozen baseline -- Dense
+R@5=0.964/MRR=0.889, BM25=0.810/0.766, Hybrid=0.952/0.875,
+Hybrid+vf=0.929/0.863 -- and `git diff --stat data/benchmark/` is empty
+(all three CSVs unchanged), confirming this was purely an architecture
+fix at `output_k=10` (`candidate_k=40` exactly reproducing the old
+`fetch_k` at that one value), not a retrieval-quality change. Full test
+suite: 164 passed (156 prior + 8 new), same 5 pre-existing unrelated
+`test_retriever.py`/`test_vector_store.py` failures, untouched.
+
+**Files modified**: `src/retrieval/retrieval.py` (`candidate_k`/
+`output_k` decoupling, `CANDIDATE_K`, `_check_output_k`),
+`scripts/run_pydantic_benchmark.py` (`OUTPUT_K` rename, explicit
+`candidate_k`), `scripts/diagnose_failed_queries.py` (simplified via the
+new public API, `_FETCH_MULTIPLIER` import removed),
+`tests/test_retrieval_integration.py` (`top_k=` → `output_k=`).
+
+**Files added**: `tests/test_retrieval_prefix_stability.py`.
+
+**Not done, per this stage's explicit scope**: no reranker, no RRF
+weight/`RRF_K` tuning, no Gold Set v1 changes, no chunking changes, no
+query rewriting. Gold Set v1 remains frozen and untouched; benchmark
+numbers confirmed unchanged, not re-optimized.

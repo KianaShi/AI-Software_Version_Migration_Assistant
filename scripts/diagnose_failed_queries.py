@@ -4,34 +4,32 @@ import sqlite3
 from pathlib import Path
 
 from scripts.build_pydantic_benchmark_corpus import build_indices, run_pipeline
-from src.retrieval.dense_index import query_dense
-from src.retrieval.hybrid import reciprocal_rank_fusion
-from src.retrieval.retrieval import _FETCH_MULTIPLIER, retrieve_dense, retrieve_sparse
-from src.retrieval.sparse_index import query_sparse
+from src.retrieval.retrieval import CANDIDATE_K, retrieve_dense, retrieve_hybrid, retrieve_sparse
 
 """
 Stage 8A diagnostic. Reads data/benchmark/per_query_results.csv (written
-by the real benchmark run, top_k=10) as the AUTHORITATIVE list of which
-queries fail -- do not recompute "which queries fail" independently.
+by the real benchmark run) as the AUTHORITATIVE list of which queries
+fail -- do not recompute "which queries fail" independently.
 
-Important pool-size fix: retrieve_hybrid()'s RRF candidate pool
-(fetch_k = top_k * 4) scales with whatever top_k the caller passes, so a
-naive "call retrieve_hybrid(top_k=50) to see deeper ranks" changes the
-fusion pool itself and can show a DIFFERENT ranking than what the real
-benchmark (top_k=10 -> fetch_k=40) actually produced -- caught this
-empirically: q_multi_02 showed hybrid rank 6 under a top_k=50 pool but
-recall@5=1.0 (rank <=5) under the real top_k=10 pool. Dense and sparse
-ranks are pool-size-independent (no fusion, so requesting more results
-doesn't reorder the ones already returned) and are safe to inspect at any
-depth. Hybrid is reconstructed here at the EXACT fetch_k the real
-benchmark used (top_k=10 -> fetch_k=40), unfused-and-untruncated, so the
-reported rank is the real one, not an artifact of a bigger diagnostic pool.
+Stage 8B0 note: this script originally had to manually reconstruct
+Hybrid's fused ranking at the exact fetch_k the real benchmark used,
+because retrieve_hybrid()'s RRF candidate pool used to scale with
+whatever output top_k the caller passed (fetch_k = top_k * 4) -- a naive
+"call retrieve_hybrid(top_k=50) to see deeper ranks" changed the fusion
+pool itself and could show a DIFFERENT ranking than the real benchmark
+produced (caught empirically: q_multi_02 showed hybrid rank 6 under a
+top_k=50 pool but recall@5=1.0 under the real top_k=10 pool). Now that
+retrieval.py fixes candidate_k independently of output_k (see its module
+docstring), this script just calls retrieve_hybrid() directly with
+output_k=candidate_k=CANDIDATE_K to see the whole real candidate pool,
+unfused-reconstruction no longer needed -- the public API *is* the real
+ranking now, at any output_k up to CANDIDATE_K, since it fixes the same
+candidate pool without a separate depth-specific hack.
 """
 
 GOLD_PATH = Path("data/gold/pydantic_gold_queries.json")
 RESULTS_CSV = Path("data/benchmark/per_query_results.csv")
-BENCHMARK_TOP_K = 10  # must match scripts/run_pydantic_benchmark.py TOP_K
-CUTOFFS = [5, 10, 20]  # capped at BENCHMARK_TOP_K * _FETCH_MULTIPLIER (40)
+CUTOFFS = [5, 10, 20]  # capped at CANDIDATE_K (40)
 
 
 def rank_of_change(retrieved_chunk_ids: list[str], target_change_id: str, chunk_to_change_ids: dict) -> int | None:
@@ -58,13 +56,11 @@ def find_failing_query_ids() -> list[str]:
 
 
 def hybrid_rank_at_benchmark_pool_size(query_text, collection, sparse_index, chunks_by_id, target_change_id, chunk_to_change_ids) -> int | None:
-    fetch_k = BENCHMARK_TOP_K * _FETCH_MULTIPLIER  # exactly what the real benchmark's retrieve_hybrid(top_k=10) uses internally
-    dense_raw = query_dense(collection, query_text, chunks_by_id, fetch_k=fetch_k)
-    sparse_raw = query_sparse(sparse_index, query_text, chunks_by_id, fetch_k=fetch_k)
-    fused = reciprocal_rank_fusion(
-        [[r.chunk.chunk_id for r in dense_raw], [r.chunk.chunk_id for r in sparse_raw]]
-    )
-    fused_ids = [chunk_id for chunk_id, _score in fused]
+    # output_k=CANDIDATE_K surfaces the whole real candidate pool -- the
+    # same pool the real benchmark's retrieve_hybrid(output_k=10) fuses
+    # over internally, since candidate_k no longer depends on output_k.
+    results = retrieve_hybrid(collection, sparse_index, query_text, chunks_by_id, output_k=CANDIDATE_K)
+    fused_ids = [r.chunk.chunk_id for r in results]
     return rank_of_change(fused_ids, target_change_id, chunk_to_change_ids)
 
 
@@ -95,8 +91,8 @@ def main() -> None:
         print(f"=== {query_id} | {q['query_text']} ===")
         print(f"taxonomy: {q['query_type']}")
 
-        dense_full = retrieve_dense(collection, q["query_text"], chunks_by_id, top_k=50)
-        sparse_full = retrieve_sparse(sparse_index, q["query_text"], chunks_by_id, top_k=50)
+        dense_full = retrieve_dense(collection, q["query_text"], chunks_by_id, output_k=50, candidate_k=50)
+        sparse_full = retrieve_sparse(sparse_index, q["query_text"], chunks_by_id, output_k=50, candidate_k=50)
         dense_ids = [r.chunk.chunk_id for r in dense_full]
         sparse_ids = [r.chunk.chunk_id for r in sparse_full]
 
@@ -113,7 +109,7 @@ def main() -> None:
             for mode_name, rank, note in (
                 ("dense", dense_rank, "(pool: top 50, stable)"),
                 ("sparse", sparse_rank, "(pool: top 50, stable)"),
-                ("hybrid", hybrid_rank, f"(pool: top {BENCHMARK_TOP_K * _FETCH_MULTIPLIER}, matches real benchmark)"),
+                ("hybrid", hybrid_rank, f"(pool: top {CANDIDATE_K}, matches real benchmark)"),
             ):
                 rank_str = str(rank) if rank else "NOT FOUND"
                 hits = " ".join(("YES".ljust(7) if rank and rank <= c else "no".ljust(7)) for c in CUTOFFS)
