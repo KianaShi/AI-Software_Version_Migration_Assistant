@@ -272,7 +272,9 @@ def main() -> None:
         symbol_to_change_id[row["symbol_name"]] = row["change_id"]
 
     change_to_evidence_ids: dict[str, list[str]] = {}
-    for row in conn.execute("SELECT change_id, evidence_id FROM evidence_links"):
+    for row in conn.execute(
+        "SELECT change_id, evidence_id FROM evidence_links ORDER BY change_id, evidence_id"
+    ):
         change_to_evidence_ids.setdefault(row["change_id"], []).append(row["evidence_id"])
 
     text_to_chunk_id: dict[str, str] = {c.text.strip(): c.chunk_id for c in chunks}

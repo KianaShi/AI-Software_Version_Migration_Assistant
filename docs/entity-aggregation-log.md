@@ -1222,10 +1222,19 @@ default/comparison fix), `scripts/generate_pydantic_gold_set.py`
 **Files added**: `tests/test_gold_set_generation.py` (6 tests: digest
 determinism across key order, digest sensitivity to content drift, guard
 passes on matching digest, guard raises on drift, guard no-ops when not
-frozen, and a direct check that the *currently committed* frozen JSON's
-digest still equals `FROZEN_V1_QUERY_DIGEST` -- this last one is the real
-regression guard, since it fails the day someone edits `GOLD_QUERIES`/
-`NEGATIVE_QUERIES` without updating the constant).
+frozen, and `test_current_frozen_gold_queries_match_committed_digest`,
+which checks only that the *checked-in* `pydantic_gold_queries.json`
+still hashes to `FROZEN_V1_QUERY_DIGEST` -- it reads the committed
+artifact directly and does **not** run `GOLD_QUERIES`/`NEGATIVE_QUERIES`
+through the resolution pipeline, so it cannot by itself catch someone
+editing those definitions in the script. That drift is instead caught
+at generation time: `main()` resolves the definitions into `gold` and
+calls `check_frozen_guard(GOLD_METADATA, gold)` before the file is ever
+written, so a source-level edit either fails loudly there or the
+resulting JSON simply wouldn't match what's committed -- a full
+`run_pipeline()` integration test asserting this end-to-end was
+considered and deliberately left out of this PR as more than the fix
+needed).
 
 **Verification, no benchmark rerun**: retrieval algorithms and the gold
 query payload are both untouched by this fix (confirmed: `git diff` on
@@ -1236,3 +1245,48 @@ Instead ran an integrity check: digest match confirmed, 42/5/1 scope
 split unchanged, full suite 156 passed (150 prior + 6 new) with the same
 5 pre-existing unrelated `test_retriever.py`/`test_vector_store.py`
 failures, untouched as always.
+
+## PR review fix, round 2 — CodeRabbit findings on the round-1 fix commit
+
+Second CodeRabbit pass reviewed `01e5825` itself and found two more
+issues. Both verified against current code before fixing; both were
+real.
+
+**1. Overstated claim about what the digest regression test covers.**
+`test_current_frozen_gold_queries_match_committed_digest` reads
+`data/gold/pydantic_gold_queries.json` straight off disk and checks it
+against `FROZEN_V1_QUERY_DIGEST` -- it never touches `GOLD_QUERIES`/
+`NEGATIVE_QUERIES` or runs them through the resolution pipeline, so the
+log's claim that it "fails the day someone edits GOLD_QUERIES/
+NEGATIVE_QUERIES" was wrong: editing those definitions and rerunning the
+generator is what `check_frozen_guard()` inside `main()` catches
+(pre-write, before the JSON file changes at all) -- this test only
+catches the file being hand-edited or the guard being bypassed. Doc
+corrected above to describe the actual coverage split. Per your
+instruction, not adding a full `run_pipeline()` integration test in this
+PR -- `check_frozen_guard()` already has direct unit coverage, and an
+end-to-end test through the real pipeline is more machinery than this
+fix needs.
+
+**2. `evidence_links` query had no `ORDER BY`.** The
+`SELECT change_id, evidence_id FROM evidence_links` populating
+`change_to_evidence_ids` relied on SQLite's unspecified row order for an
+unindexed scan -- harmless today, but `relevant_evidence_ids` is a list
+(digest-sensitive to element order, unlike the dict-key ordering
+`query_digest()` already normalizes via `sort_keys=True`), so a future
+DB engine/index/SQLite-version change could silently reorder it and trip
+the frozen-guard on a rebuild that changed nothing real. Added
+`ORDER BY change_id, evidence_id`. Regenerated through the guarded
+generator: digest matched (guard didn't raise), and `git diff` on
+`data/gold/pydantic_gold_queries.json` was empty -- the implicit order
+was already correct, this just stopped relying on an unspecified
+guarantee for it.
+
+**Files modified**: `scripts/generate_pydantic_gold_set.py` (`ORDER BY`
+on the `evidence_links` query), `docs/entity-aggregation-log.md` (this
+entry + corrected description of the digest test's coverage).
+
+**Verification**: frozen gold JSON byte-identical (empty diff), full
+suite 156 passed, same 5 pre-existing unrelated failures. No benchmark
+rerun (retrieval code and gold payload both untouched), tag
+`pydantic-gold-v1` not moved (still `bb9efc8`).
