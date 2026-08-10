@@ -28,11 +28,14 @@ def test_add_chunks():
         [0.0, 1.0, 0.0],
     ])
 
+    metadatas = [{"source": "sample.pdf"}, {"source": "sample.pdf"}]
+
     add_chunks(
         collection=collection,
         document_name="sample.pdf",
         chunks=chunks,
         embeddings=embeddings,
+        metadatas=metadatas,
     )
     
     result = collection.get()
