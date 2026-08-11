@@ -1659,3 +1659,151 @@ v1, or benchmark code touched.
 
 **Files modified**: `tests/test_vector_store.py` (`test_add_chunks`
 fixed to pass `metadatas`).
+
+## Stage 8B1 — Ranking ablation: weighted RRF + Qwen3-Reranker-0.6B
+
+Branch: `stage8b1-ranking-ablation`, off `main` at `ceeb052`
+(post-repository-health-audit merge, 175 passed baseline). Scope, as
+instructed: controlled ranking experiments only -- RRF 1:1 / Dense:BM25
+2:1 / Dense:BM25 1:2 / post-fusion reranking with Qwen3-Reranker-0.6B.
+Explicitly unchanged: Gold Set v1, MiniLM (`all-MiniLM-L6-v2`), chunking,
+corpus, `candidate_k=40` (Stage 8B0's protocol), query rewriting (still
+none), version-filter semantics.
+
+**Weighted RRF** (`src/retrieval/hybrid.py`, `src/retrieval/retrieval.py`):
+`reciprocal_rank_fusion()` gained an optional `weights` param -- each
+ranking's score contribution is `weight / (k + rank)` instead of a fixed
+`1 / (k + rank)`. `weights=None` (the default, and every pre-8B1 caller)
+reproduces the original unweighted formula exactly -- verified by a
+regression test asserting `weights=None` and `weights=[1.0, 1.0]`
+produce identical output, plus rerunning `run_pydantic_benchmark.py`
+afterward and confirming its CSVs stayed byte-identical.
+`retrieve_hybrid()` threads an optional `weights: tuple[float, float]`
+(dense, sparse) through to fusion, same backward-compatible default.
+Added `test_extreme_dense_weight_converges_on_dense_only_ranking`: a
+corpus-independent, mathematically-guaranteed wiring test (as one
+weight dominates the other, RRF's fused order must converge on the
+dominant ranking's own order, since ranks are a tie-free permutation) --
+proves `weights=` actually reaches fusion, not just "looks plausible."
+
+**Reranker** (`src/retrieval/reranker.py`): wraps `Qwen/Qwen3-Reranker-0.6B`
+via `sentence_transformers.CrossEncoder`, lazily loaded as a module-level
+singleton (~1.2GB, downloaded once and cached locally; smoke-tested
+directly before building anything around it -- a relevant pair scored
+10.25, an irrelevant pair -10.56, cleanly separated). `rerank(query_text,
+candidates, output_k, model=None)` scores every candidate against the
+query, sorts, slices to `output_k`, and rebuilds `RetrievedChunk` objects
+with updated `score`/`rank`. `model` is injectable specifically so
+`tests/test_reranker.py` (5 tests) can exercise the sort/slice/rebuild
+logic against a stub `.predict()` implementation instead of loading the
+real 1.2GB model on every default `pytest` run -- the real model's
+actual reranking quality is validated by the ablation script against
+real data instead, not the fast unit suite. Deliberately not folded into
+`retrieve_hybrid()` itself: reranking is an explicit opt-in
+post-processing step over whatever candidate pool the caller already
+has, same separation of concerns as `filters.apply_filters`.
+
+**`scripts/run_ranking_ablation.py`** (new, does not modify
+`run_pydantic_benchmark.py`): imports `load_gold`/`build_resolvers`/
+`aggregate`/`write_csv` from the frozen benchmark runner rather than
+reimplementing them, so there's no way for this script's corpus/gold/
+scoring conventions to silently drift from the frozen baseline's. Four
+modes: `rrf_1_1` (baseline, reproduced here for side-by-side display,
+not a second frozen artifact), `rrf_dense2_sparse1`,
+`rrf_dense1_sparse2`, and `hybrid_reranked` (retrieves the *unweighted*
+RRF 1:1 candidate_k=40 pool in full, i.e. `output_k=CANDIDATE_K`, then
+reranks that whole pool and slices to `OUTPUT_K=10` -- reranking scores
+on top of the standard fusion's own pool, not a separately-pooled
+candidate set). Scored over the same 42-query `change_retrieval` core as
+the frozen benchmark, plus a focused rank trace for `q_nl_02`/`q_nl_03`
+specifically (the two known Stage 8A/8A.2 failures this ablation exists
+to investigate).
+
+**Results** (42-query `change_retrieval` core, change-level):
+
+| Mode | Recall@5 | MRR | nDCG@5 |
+|---|---:|---:|---:|
+| `rrf_1_1` (= frozen `hybrid`) | 0.952 | 0.875 | 0.895 |
+| `rrf_dense2_sparse1` | 0.952 | 0.887 | 0.902 |
+| `rrf_dense1_sparse2` | 0.905 | 0.889 | 0.893 |
+| `hybrid_reranked` | **0.976** | **0.964** | **0.967** |
+
+`rrf_1_1` matches the frozen `hybrid` baseline exactly (0.952/0.875),
+confirming the weighted-fusion machinery doesn't perturb the unweighted
+path. Weighting toward Dense (2:1) improves MRR/nDCG without hurting
+Recall@5; weighting toward Sparse (1:2) trades Recall@5 down (0.952 ->
+0.905) for a marginally better MRR -- a real, reportable tradeoff, not
+noise. Reranking is the clear winner across every metric: Recall@5
+0.952 -> 0.976, MRR 0.875 -> 0.964, a meaningfully better ranking of the
+same underlying RRF 1:1 candidate pool.
+
+**Focus queries**:
+
+- **`q_nl_03`** ("How do I validate a plain dict into a model object
+  now?") -- **fixed by reranking**: `NOT FOUND in top 10` under all
+  three RRF variants, rank **2** (Recall@5=1.0) under `hybrid_reranked`.
+  This is exactly the Stage 8A.2 hypothesis validated: Dense finds the
+  right chunk on its own (top-5), plain RRF fusion buries it (rank
+  ~11/40 per Stage 8A.2's diagnosis), and reranking *over the fused
+  pool* recovers it -- a fusion-dilution problem, not a ranking-model
+  problem, solved exactly the way it was predicted to be solvable.
+- **`q_nl_02`** ("What's the new way to build a model instance while
+  skipping validation?") -- **not fixed by any mode tested**, reranking
+  included. Worth stating precisely what this does and doesn't show:
+  this ablation's rank trace only reports whether the target lands in
+  each mode's final `output_k=10`, not whether it's present deeper in
+  the underlying `candidate_k=40` pool that `hybrid_reranked` reranks
+  over -- if the target never entered that fused 40-item pool to begin
+  with, no reranker operating strictly within it could ever surface it,
+  a different failure mode than "ranked too low within the pool." That
+  distinction needs a `diagnose_failed_queries.py`-style deeper trace to
+  resolve, not asserted here from the ablation's headline numbers alone.
+
+**Verification**: full suite 185 passed (175 prior + 10 new: 3
+`test_hybrid.py` weight tests, 2 `test_retrieval_integration.py` weight
+tests, 5 `test_reranker.py` stub-model tests), no pre-existing failures.
+Frozen `run_pydantic_benchmark.py` rerun after all changes: numbers and
+CSVs byte-identical to the Stage 8B0 baseline (Dense 0.964/0.889, BM25
+0.810/0.766, Hybrid 0.952/0.875, Hybrid+vf 0.929/0.863). Gold Set v1
+regenerated through the guarded generator: digest matched, `git diff`
+on `data/gold/` empty. `pydantic-gold-v1` tag untouched.
+
+**Files added**: `src/retrieval/reranker.py`,
+`scripts/run_ranking_ablation.py`, `tests/test_reranker.py`,
+`data/benchmark/ranking_ablation_aggregate_results.csv`,
+`data/benchmark/ranking_ablation_per_query_results.csv`.
+
+**Files modified**: `src/retrieval/hybrid.py` (weighted
+`reciprocal_rank_fusion`), `src/retrieval/retrieval.py`
+(`retrieve_hybrid` `weights` param), `tests/test_hybrid.py`,
+`tests/test_retrieval_integration.py` (weighted-fusion tests, plus an
+unrelated `next()`-without-default hygiene fix flagged during this
+stage -- see below), `scripts/generate_pydantic_gold_set.py`,
+`src/extraction/change_extraction.py` (unrelated typing/invariant fixes,
+see below).
+
+**Unrelated fixes folded in during this stage** (verified against
+current code, kept minimal, don't touch retrieval/ranking logic):
+- `tests/test_retrieval_integration.py`: a bare `next(... )` with no
+  default would raise an opaque `StopIteration` if the expected test
+  chunk were ever missing from the fixture corpus. Now raises a clear
+  `assert ... is not None, "Expected ... chunk in test corpus"` instead.
+- `src/extraction/change_extraction.py::_find_external_refs`: same bare
+  `next()` pattern over regex capture groups. Verified the underlying
+  invariant actually holds (`_EXTERNAL_REF_RE` is a top-level alternation
+  with exactly one capturing group per branch, each requiring `\d+`, so
+  a successful match structurally guarantees exactly one non-`None`
+  group) -- not a provable-by-static-analysis fact, so made it an
+  explicit `raise ValueError(...)` instead of an implicit `StopIteration`
+  if it were ever violated by a future regex edit.
+- `scripts/generate_pydantic_gold_set.py`: `by_type`/`by_scope` summary
+  dicts indexed with `q["query_type"]`/`q["evaluation_scope"]`, which
+  mypy widened to `Sequence[str]` (not `str`) because the same dict
+  literal also holds `list[str]`-valued keys (`required_change_ids`
+  etc.), and `str` and `list[str]`'s common supertype is `Sequence[str]`.
+  Not a runtime bug (those two keys are always real strings), but a real
+  type-inference gap. Fixed by wrapping with `str(...)` at the two
+  print-summary call sites -- minimal, doesn't restructure `gold`'s
+  broader untyped-dict shape (a `TypedDict` would be the "proper" fix,
+  out of scope for a two-line DeepSource finding). Verified via
+  regeneration: frozen guard passed, `git diff` on `data/gold/` empty.

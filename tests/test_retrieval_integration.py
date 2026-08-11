@@ -66,6 +66,35 @@ def test_hybrid_returns_results_present_in_dense_or_sparse():
     assert hybrid_ids  # non-empty
 
 
+def test_hybrid_weights_none_matches_default_unweighted_fusion():
+    chunks_by_id, collection, sparse_index = _build_corpus()
+
+    default = retrieve_hybrid(collection, sparse_index, "FooClient.create", chunks_by_id, output_k=4)
+    explicit_none = retrieve_hybrid(collection, sparse_index, "FooClient.create", chunks_by_id, output_k=4, weights=None)
+    explicit_equal = retrieve_hybrid(collection, sparse_index, "FooClient.create", chunks_by_id, output_k=4, weights=(1.0, 1.0))
+
+    ids = lambda results: [r.chunk.chunk_id for r in results]
+    assert ids(default) == ids(explicit_none) == ids(explicit_equal)
+
+
+def test_extreme_dense_weight_converges_on_dense_only_ranking():
+    # Mathematically guaranteed regardless of corpus specifics: as the
+    # dense weight dominates the sparse weight, each pair's RRF score
+    # difference is dominated by their dense-rank difference (ranks are
+    # a tie-free permutation), so the fused order must converge on
+    # dense-only's own order -- a wiring test that retrieve_hybrid's
+    # weights= actually reaches reciprocal_rank_fusion, not just a
+    # plausible-looking ranking shuffle.
+    chunks_by_id, collection, sparse_index = _build_corpus()
+
+    dense_heavy = retrieve_hybrid(
+        collection, sparse_index, "FooClient.create", chunks_by_id, output_k=4, weights=(1e6, 1e-6)
+    )
+    dense_only = retrieve_dense(collection, "FooClient.create", chunks_by_id, output_k=4)
+
+    assert [r.chunk.chunk_id for r in dense_heavy] == [r.chunk.chunk_id for r in dense_only]
+
+
 def test_version_filter_applies_identically_across_all_three_modes():
     chunks_by_id, collection, sparse_index = _build_corpus()
     version_filter = query_version_interval("as of 5.0")
