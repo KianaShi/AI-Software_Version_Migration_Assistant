@@ -342,13 +342,15 @@ def main() -> None:
     print(f"Wrote {len(gold)} gold queries to {OUTPUT_PATH} ({GOLD_METADATA['name']}, review_revision={GOLD_METADATA['review_revision']})")
     by_type: dict[str, int] = {}
     for q in gold:
-        by_type[q["query_type"]] = by_type.get(q["query_type"], 0) + 1
+        query_type = str(q["query_type"])
+        by_type[query_type] = by_type.get(query_type, 0) + 1
     for query_type, count in sorted(by_type.items()):
         print(f"  {query_type}: {count}")
 
     by_scope: dict[str, int] = {}
     for q in gold:
-        by_scope[q["evaluation_scope"]] = by_scope.get(q["evaluation_scope"], 0) + 1
+        evaluation_scope = str(q["evaluation_scope"])
+        by_scope[evaluation_scope] = by_scope.get(evaluation_scope, 0) + 1
     for scope, count in sorted(by_scope.items()):
         print(f"  evaluation_scope={scope}: {count}")
 

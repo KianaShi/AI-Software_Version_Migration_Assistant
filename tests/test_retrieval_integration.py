@@ -110,9 +110,12 @@ def test_version_filter_applies_identically_across_all_three_modes():
 def test_evaluate_queries_compares_dense_sparse_hybrid_on_same_gold_set():
     chunks_by_id, collection, sparse_index = _build_corpus()
 
-    target_chunk_id = next(
-        c.chunk_id for c in chunks_by_id.values() if c.text == "`FooClient.create()` was removed."
+    target_chunk = next(
+        (c for c in chunks_by_id.values() if c.text == "`FooClient.create()` was removed."),
+        None,
     )
+    assert target_chunk is not None, "Expected `FooClient.create()` chunk in test corpus"
+    target_chunk_id = target_chunk.chunk_id
     chunk_to_change_ids = {target_chunk_id: ["chg_foo_create_removed"]}
     gold = [
         GoldQuery(
