@@ -107,7 +107,8 @@ def test_rerank_negative_output_k_raises_with_candidates():
 
 
 class _WrongScoreCountModel:
-    def predict(self, pairs: list[tuple[str, str]]) -> list[float]:
+    @staticmethod
+    def predict(pairs: list[tuple[str, str]]) -> list[float]:
         return [0.5] * (len(pairs) - 1) if pairs else []
 
 

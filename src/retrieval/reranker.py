@@ -1,3 +1,5 @@
+from typing import Protocol, Sequence
+
 from sentence_transformers import CrossEncoder
 
 from src.retrieval.models import RetrievedChunk
@@ -14,6 +16,15 @@ overlap only) can do. Which chunks are in the candidate pool to begin
 with stays entirely the caller's responsibility, same separation of
 concerns as filters.apply_filters.
 """
+
+
+class Reranker(Protocol):
+    """The real contract rerank() needs -- CrossEncoder satisfies it
+    structurally, but so does any test stub with a matching predict(),
+    without either having to subclass the other."""
+
+    def predict(self, pairs: list[tuple[str, str]]) -> Sequence[float]: ...
+
 
 RERANKER_MODEL_NAME = "Qwen/Qwen3-Reranker-0.6B"
 # Pinned so a re-run can't silently pick up a newer upload to this model
@@ -35,21 +46,21 @@ def rerank(
     query_text: str,
     candidates: list[RetrievedChunk],
     output_k: int,
-    model: CrossEncoder | None = None,
+    model: Reranker | None = None,
 ) -> list[RetrievedChunk]:
     """
     Score every candidate against query_text and return the top
     output_k, re-ranked (score/rank fields reflect the new order).
-    model: injectable for testing (any object exposing
-    .predict(list[tuple[str, str]]) -> Sequence[float]) -- defaults to
-    the real, lazily-loaded Qwen3-Reranker-0.6B singleton.
+    model: injectable for testing (any object satisfying the Reranker
+    protocol) -- defaults to the real, lazily-loaded Qwen3-Reranker-0.6B
+    singleton.
     """
     if output_k < 0:
         raise ValueError(f"output_k ({output_k}) must not be negative.")
     if not candidates:
         return []
 
-    model = model or _get_model()
+    model = model if model is not None else _get_model()
     pairs = [(query_text, c.chunk.text) for c in candidates]
     scores = model.predict(pairs)
 
