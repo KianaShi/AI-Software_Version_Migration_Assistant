@@ -39,7 +39,7 @@ def _build_corpus():
 
 
 def test_sparse_ranks_exact_symbol_query_first_even_amid_similar_prose():
-    chunks_by_id, collection, sparse_index = _build_corpus()
+    chunks_by_id, _collection, sparse_index = _build_corpus()
 
     results = retrieve_sparse(sparse_index, "FooClient.create", chunks_by_id, output_k=1)
 
@@ -73,7 +73,9 @@ def test_hybrid_weights_none_matches_default_unweighted_fusion():
     explicit_none = retrieve_hybrid(collection, sparse_index, "FooClient.create", chunks_by_id, output_k=4, weights=None)
     explicit_equal = retrieve_hybrid(collection, sparse_index, "FooClient.create", chunks_by_id, output_k=4, weights=(1.0, 1.0))
 
-    ids = lambda results: [r.chunk.chunk_id for r in results]
+    def ids(results):
+        return [r.chunk.chunk_id for r in results]
+
     assert ids(default) == ids(explicit_none) == ids(explicit_equal)
 
 

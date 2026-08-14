@@ -1,3 +1,5 @@
+import pytest
+
 from src.retrieval.models import Chunk, RetrievedChunk
 from src.retrieval.reranker import rerank
 
@@ -82,3 +84,36 @@ def test_rerank_empty_candidates_returns_empty_without_calling_model():
 
     assert results == []
     assert model.calls == []
+
+
+def test_rerank_negative_output_k_raises_even_with_empty_candidates():
+    # output_k<0 must be rejected before the empty-candidates early
+    # return -- otherwise it silently succeeds with [] instead of
+    # surfacing the caller's bug, and with non-empty candidates
+    # scored[:output_k] under a negative index would silently drop
+    # items from the end rather than error at all.
+    model = _StubModel({})
+
+    with pytest.raises(ValueError):
+        rerank("q", [], output_k=-1, model=model)
+
+
+def test_rerank_negative_output_k_raises_with_candidates():
+    candidates = [_chunk("a", "x")]
+    model = _StubModel({"x": 0.5})
+
+    with pytest.raises(ValueError):
+        rerank("q", candidates, output_k=-1, model=model)
+
+
+class _WrongScoreCountModel:
+    def predict(self, pairs: list[tuple[str, str]]) -> list[float]:
+        return [0.5] * (len(pairs) - 1) if pairs else []
+
+
+def test_rerank_raises_if_model_returns_wrong_number_of_scores():
+    candidates = [_chunk("a", "x"), _chunk("b", "y")]
+    model = _WrongScoreCountModel()
+
+    with pytest.raises(ValueError):
+        rerank("q", candidates, output_k=2, model=model)

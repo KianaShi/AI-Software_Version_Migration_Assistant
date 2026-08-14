@@ -1894,3 +1894,93 @@ quantified limitation rather than left implicit.
 this section were run from a local scratch location, not checked into
 the repo, since they're one-off diagnostics over already-existing
 `retrieve_hybrid`/`rerank` APIs, not new reusable tooling).
+
+## PR #4 review fix — pin reranker revision, harden rerank(), remove opaque failure paths
+
+Verified each finding against current code; fixed only the still-valid
+ones. No ranking behavior, Gold Set v1, corpus, chunking, MiniLM, RRF
+weights, or `candidate_k=40` touched -- confirmed below, not assumed.
+
+**1. Reranker model revision now pinned** (`src/retrieval/reranker.py`):
+added `RERANKER_MODEL_REVISION = "e61197ed45024b0ed8a2d74b80b4d909f1255473"`
+(the same sha already recorded in the wrap-up section above, now backed
+by an actual `CrossEncoder(RERANKER_MODEL_NAME, revision=RERANKER_MODEL_REVISION)`
+call instead of loading by name alone). Real gap: without this, a
+future re-run of the ablation could silently pick up a newer upload to
+the same model name and produce different numbers with no record of
+why. `scripts/run_ranking_ablation.py` imports and prints this same
+constant (not a second hardcoded copy) at the top of its output.
+
+**2. `rerank()` hardened** (`src/retrieval/reranker.py`):
+- `output_k < 0` is now rejected *before* the empty-candidates early
+  return. Previously `rerank(q, [], output_k=-1)` silently returned
+  `[]` instead of surfacing the caller's bug, and with non-empty
+  candidates `scored[:output_k]` under a negative index would have
+  silently dropped items from the end rather than erroring at all --
+  the exact same footgun `retrieval.py::_check_output_k` already
+  guards against, now closed here too.
+- `model.predict()`'s returned score count is now checked against the
+  candidate count before zipping them together; mismatched lengths
+  raise a `ValueError` naming both counts instead of `zip()` silently
+  truncating to the shorter one and dropping candidates with no
+  indication anything went wrong. (Considered `zip(..., strict=True)`
+  instead, per the review's suggestion -- kept the explicit check
+  instead, since it names the model/candidate counts directly rather
+  than `zip`'s generic length-mismatch message, and adding `strict=True`
+  on top would have been pure redundancy once the explicit check
+  already guarantees equal length.)
+- 3 new regression tests in `tests/test_reranker.py`: negative
+  `output_k` with empty candidates, negative `output_k` with real
+  candidates, and a stub model that returns one fewer score than it
+  was given candidates.
+
+**3. Bare `next()` in `run_ranking_ablation.py` replaced.** The focus-query
+loop's `next(r for r in change_results[mode] if r.query_id == query_id)`
+had no default -- structurally this invariant should always hold
+(`query_id` is checked against `by_id` before the loop, and
+`evaluate_queries()` returns exactly one result per gold query it's
+given), but per the same standard applied to `change_extraction.py`
+earlier in this stage, an implicit invariant a future edit could break
+silently is worth making explicit rather than trusted. Replaced with a
+`by_query_id` dict lookup plus an explicit `RuntimeError` if the
+invariant is ever violated, naming which mode/query failed.
+
+**4. `TYP-050` in the aggregate-row dict fixed.** `row = {"retrieval_mode":
+mode, "scored_against": "..."}` followed by `row.update(agg)` (where
+`agg` is `dict[str, float]`) hit the same dict-literal value-type
+narrowing issue as the earlier `generate_pydantic_gold_set.py` finding
+-- mypy inferred `row` as `dict[str, str]` from the literal, so
+`.update()` with float values didn't type-check. Fixed with a minimal
+explicit annotation, `row: dict[str, str | float] = {...}`, rather than
+a broader `TypedDict` refactor.
+
+**5. Style cleanups in `tests/test_retrieval_integration.py`:**
+assigned lambda (`ids = lambda results: ...`) replaced with a local
+`def ids(results): ...`; the pre-existing unused `collection` binding
+in `test_sparse_ranks_exact_symbol_query_first_even_amid_similar_prose`
+(present before this stage, just newly flagged) renamed to
+`_collection` -- confirmed it's genuinely unused in that one test and
+the rename is a mechanical one-liner with no behavior change before
+touching it.
+
+**Explicitly not fixed, per review's own triage** (all re-verified,
+not just taken on faith): `run_pydantic_benchmark.py`'s `TYP-050`
+findings -- valid but pre-existing, that file is untouched by any
+Stage 8B1 commit; `PYL-W0105` docstring-placement findings -- same
+repo-wide convention documented earlier in this log, still out of
+scope for a one-file fix; `PYL-W0603` on `reranker.py`'s `global
+_model` -- an intentional lazy singleton cache (same pattern as
+`embedding.py`'s module-level `MODEL`), not a correctness issue.
+
+**Verification**: full suite 188 passed (185 prior + 3 new), 0
+failures. Gold Set v1 regenerated through the guarded generator:
+digest matched, `git diff` on `data/gold/` empty. Did **not** rerun the
+42-query real-model ablation -- none of these fixes touch ranking
+behavior (revision pin resolves to the same weights already in use;
+the two new guards only reject inputs the real ablation never sends;
+the rest is pure typing/style), so there's nothing for a rerun to
+catch that the targeted tests and frozen-guard check don't already
+cover.
+
+**Files modified**: `src/retrieval/reranker.py`, `scripts/run_ranking_ablation.py`,
+`tests/test_reranker.py`, `tests/test_retrieval_integration.py`.

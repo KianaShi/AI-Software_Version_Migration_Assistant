@@ -3,7 +3,7 @@ from pathlib import Path
 from scripts.build_pydantic_benchmark_corpus import build_indices, run_pipeline
 from scripts.run_pydantic_benchmark import aggregate, build_resolvers, load_gold, write_csv
 from src.retrieval.evaluation import evaluate_queries
-from src.retrieval.reranker import rerank
+from src.retrieval.reranker import RERANKER_MODEL_NAME, RERANKER_MODEL_REVISION, rerank
 from src.retrieval.retrieval import CANDIDATE_K, retrieve_hybrid
 
 """
@@ -92,8 +92,9 @@ def main() -> None:
     gold = [q for q in all_gold if q.evaluation_scope == "change_retrieval"]
     print(
         f"{metadata['name']} (review_revision={metadata['review_revision']}, "
-        f"status={metadata['status']}) -- ranking ablation over {len(gold)} change_retrieval queries\n"
+        f"status={metadata['status']}) -- ranking ablation over {len(gold)} change_retrieval queries"
     )
+    print(f"Reranker: {RERANKER_MODEL_NAME} @ {RERANKER_MODEL_REVISION}\n")
 
     chunks, conn, _stats = run_pipeline()
     collection, sparse_index = build_indices(chunks)
@@ -117,7 +118,7 @@ def main() -> None:
             f"{mode:20s} R@5={agg['recall_at_5']:.3f} R@10={agg['recall_at_10']:.3f} "
             f"MRR={agg['mrr']:.3f} nDCG@5={agg['ndcg_at_5']:.3f} nDCG@10={agg['ndcg_at_10']:.3f}"
         )
-        row = {"retrieval_mode": mode, "scored_against": "required_change_ids"}
+        row: dict[str, str | float] = {"retrieval_mode": mode, "scored_against": "required_change_ids"}
         row.update(agg)
         aggregate_rows.append(row)
 
@@ -156,7 +157,14 @@ def main() -> None:
         for mode in MODES:
             retrieved_ids = run_queries[mode](q.query_text)
             rank = rank_of_any_required(retrieved_ids, q.required_change_ids, chunk_to_change_ids)
-            r = next(r for r in change_results[mode] if r.query_id == query_id)
+            by_query_id = {r.query_id: r for r in change_results[mode]}
+            if query_id not in by_query_id:
+                raise RuntimeError(
+                    f"{query_id} is in the change_retrieval gold set but missing from "
+                    f"{mode}'s evaluate_queries() results -- evaluate_queries should "
+                    "always produce exactly one result per gold query."
+                )
+            r = by_query_id[query_id]
             rank_str = str(rank) if rank else f"NOT FOUND in top {OUTPUT_K}"
             print(f"    {mode:20s} rank={rank_str:<20s} R@5={r.recall_at_5:.3f} R@10={r.recall_at_10:.3f}")
 
