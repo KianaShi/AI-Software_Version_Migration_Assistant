@@ -98,14 +98,23 @@ def retrieve_hybrid(
     candidate_k: int = CANDIDATE_K,
     package: str | None = None,
     version_filter: VersionInterval | None = None,
+    weights: tuple[float, float] | None = None,
 ) -> list[RetrievedChunk]:
+    """
+    weights: optional (dense_weight, sparse_weight) passed through to
+    reciprocal_rank_fusion -- Stage 8B1 ablation hook. None (default)
+    reproduces the exact unweighted 1:1 fusion this function always had.
+    """
     _check_output_k(output_k, candidate_k)
     dense_raw = query_dense(collection, query_text, chunks_by_id, fetch_k=candidate_k)
     sparse_raw = query_sparse(sparse_index, query_text, chunks_by_id, fetch_k=candidate_k)
 
     dense_ranking = [r.chunk.chunk_id for r in dense_raw]
     sparse_ranking = [r.chunk.chunk_id for r in sparse_raw]
-    fused = reciprocal_rank_fusion([dense_ranking, sparse_ranking])
+    fused = reciprocal_rank_fusion(
+        [dense_ranking, sparse_ranking],
+        weights=list(weights) if weights is not None else None,
+    )
 
     combined = [
         RetrievedChunk(chunk=chunks_by_id[chunk_id], score=score, rank=rank)

@@ -133,7 +133,17 @@ def _find_action_clause(statement: str) -> str | None:
 def _find_external_refs(text: str) -> list[str]:
     refs = []
     for match in _EXTERNAL_REF_RE.finditer(text):
-        number = next(g for g in match.groups() if g is not None)
+        # _EXTERNAL_REF_RE is a top-level alternation with exactly one
+        # capturing group per branch, each requiring \d+ (no empty
+        # captures) -- a successful match structurally guarantees
+        # exactly one group is non-None. Not provable by static
+        # analysis, so make the invariant explicit rather than relying
+        # on next()'s bare StopIteration to fail loudly enough.
+        number = next((g for g in match.groups() if g is not None), None)
+        if number is None:
+            raise ValueError(
+                "External reference regex matched without a captured reference number"
+            )
         refs.append(f"#{number}")
     return refs
 
