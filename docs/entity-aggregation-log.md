@@ -1984,3 +1984,78 @@ cover.
 
 **Files modified**: `src/retrieval/reranker.py`, `scripts/run_ranking_ablation.py`,
 `tests/test_reranker.py`, `tests/test_retrieval_integration.py`.
+
+## PR #4 review, rounds 3-4 -- typing correctness + expensive-call avoidance
+
+Two more small review-driven commits, not yet logged individually --
+recorded together here for completeness.
+
+**Round 3** (`fa324f3`): `model = model or _get_model()` used truthiness
+instead of `is not None` -- a falsy-but-valid injected model (e.g. a
+test double overriding `__bool__`/`__len__`) would have been silently
+ignored in favor of loading the real singleton. Fixed to an explicit
+`is not None` check. Also replaced the `model: CrossEncoder | None`
+annotation with a small `Reranker` `Protocol` (just `predict()`),
+matching what the docstring already promised -- any object with a
+compatible `predict()`, not specifically a `CrossEncoder` subclass --
+so stub models satisfy the type checker without a fake inheritance
+relationship. Nitpick: `_WrongScoreCountModel.predict` in the test file
+never used `self`, made it a `@staticmethod`.
+
+**Round 4** (`a126512`): `output_k=0` now short-circuits *before*
+`_get_model()`/`model.predict()` -- previously a known-empty request
+still paid for scoring every candidate on the (expensive, CPU-bound)
+model only to discard the result via `scored[:0]`. Scores are now
+converted to `float` and checked with `math.isfinite()` before sorting
+-- a `NaN`/`Inf` score would otherwise sort unpredictably (`NaN`
+comparisons are always `False`, so `sorted()`'s ordering guarantee
+breaks down) and silently corrupt the ranking with no error raised.
+2 new regression tests each round (4 total).
+
+Verification for both: targeted + full suite green each time (188 ->
+190 passed), no Gold Set v1/ranking-behavior changes, so no gold
+regeneration or ablation rerun needed either round.
+
+## DeepSource 8-finding report on PR #4 (`ceeb052...fa324f3`) -- final triage
+
+All 8 verified against actual current file content, not just the
+report's rendered snippets (finding 2 below caught the report
+mis-rendering, which mattered). Two real, valid findings from the same
+report (early `output_k=0` return, non-finite-score rejection) were
+already fixed in round 4 above; the remaining 8 are all
+skip-with-reason, recorded here as this round's disposition:
+
+- **Findings 1-4** (`TYP-050` x4, `scripts/run_pydantic_benchmark.py`
+  lines 193/197/210/211): pre-existing, file confirmed untouched by any
+  Stage 8B1 commit (`git log ceeb052..fa324f3 -- scripts/run_pydantic_benchmark.py`
+  is empty). Same disposition as the identical findings raised in an
+  earlier PR #4 round. Out of scope for this branch.
+- **Findings 5, 7, 8** (`PYL-W0105` x3, `scripts/run_ranking_ablation.py`
+  line 9 / `src/retrieval/reranker.py` line 7 / `tests/test_reranker.py`
+  line 6): the report's code snippets showed `"""None` immediately after
+  each docstring's opening triple-quote -- checked all three files
+  directly and none actually contain that text; the real content is a
+  plain `"""` followed by the real docstring on the next line. Treating
+  that as a report-rendering artifact, not a real second issue, and
+  scoring the actual finding (module docstring placed after imports)
+  as the same repo-wide, intentional convention documented earlier in
+  this log (Stage 6 onward, consistent across a dozen-plus files).
+  Note for the record: your message grouped these as "5/6/8"; the
+  actual `PYL-W0105` triplet is **5, 7, 8** -- finding **6** is the
+  separate `PYL-W0603` one below, not part of this group.
+- **Finding 6** (`PYL-W0603`, `src/retrieval/reranker.py` line 39,
+  `global _model` inside `_get_model()`): intentional lazy-loaded model
+  singleton, same pattern as `src/embedding.py`'s module-level `MODEL`
+  -- not a correctness issue, same disposition as the earlier PR #4
+  round's identical finding.
+
+No `.deepsource.toml` ignore rules added -- these are recorded here as
+the reviewed-and-accepted disposition, not suppressed from future scans
+(so a real future regression in the same code would still surface, and
+a human still has to look at it once). Marking these `Ignore` in
+DeepSource's own dashboard, if wanted, is a UI action outside this
+session's reach (no DeepSource dashboard/API access here).
+
+Next: waiting on CodeRabbit's latest incremental review to confirm no
+new actionable findings before merging PR #4 -- external to this
+session, no action pending here unless a new finding comes back.
