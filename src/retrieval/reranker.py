@@ -1,3 +1,4 @@
+import math
 from typing import Protocol, Sequence
 
 from sentence_transformers import CrossEncoder
@@ -57,7 +58,7 @@ def rerank(
     """
     if output_k < 0:
         raise ValueError(f"output_k ({output_k}) must not be negative.")
-    if not candidates:
+    if output_k == 0 or not candidates:
         return []
 
     model = model if model is not None else _get_model()
@@ -70,9 +71,17 @@ def rerank(
             "candidates -- a reranker model must return exactly one score per candidate."
         )
 
-    scored = sorted(zip(candidates, scores), key=lambda pair: pair[1], reverse=True)
+    float_scores = [float(s) for s in scores]
+    for s in float_scores:
+        if not math.isfinite(s):
+            raise ValueError(
+                f"model.predict() returned a non-finite score ({s!r}) -- reranker "
+                "scores must be finite to sort meaningfully."
+            )
+
+    scored = sorted(zip(candidates, float_scores), key=lambda pair: pair[1], reverse=True)
 
     return [
-        RetrievedChunk(chunk=candidate.chunk, score=float(score), rank=rank)
+        RetrievedChunk(chunk=candidate.chunk, score=score, rank=rank)
         for rank, (candidate, score) in enumerate(scored[:output_k], start=1)
     ]

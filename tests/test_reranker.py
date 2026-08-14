@@ -118,3 +118,32 @@ def test_rerank_raises_if_model_returns_wrong_number_of_scores():
 
     with pytest.raises(ValueError):
         rerank("q", candidates, output_k=2, model=model)
+
+
+def test_rerank_output_k_zero_returns_empty_without_calling_model():
+    # output_k=0 is a valid "give me nothing" request, same as
+    # output_k=0 elsewhere in retrieval.py -- but unlike those cheap
+    # slice operations, calling the reranker model is expensive, so a
+    # known-empty result should skip the model call entirely rather
+    # than score every candidate just to throw the scores away.
+    candidates = [_chunk("a", "x"), _chunk("b", "y")]
+    model = _StubModel({"x": 0.1, "y": 0.9})
+
+    results = rerank("q", candidates, output_k=0, model=model)
+
+    assert results == []
+    assert model.calls == []
+
+
+class _NonFiniteScoreModel:
+    @staticmethod
+    def predict(pairs: list[tuple[str, str]]) -> list[float]:
+        return [float("nan")] * len(pairs)
+
+
+def test_rerank_raises_if_model_returns_non_finite_score():
+    candidates = [_chunk("a", "x"), _chunk("b", "y")]
+    model = _NonFiniteScoreModel()
+
+    with pytest.raises(ValueError):
+        rerank("q", candidates, output_k=2, model=model)
