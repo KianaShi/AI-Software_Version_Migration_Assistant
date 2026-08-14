@@ -1807,3 +1807,90 @@ current code, kept minimal, don't touch retrieval/ranking logic):
   broader untyped-dict shape (a `TypedDict` would be the "proper" fix,
   out of scope for a two-line DeepSource finding). Verified via
   regeneration: frozen guard passed, `git diff` on `data/gold/` empty.
+
+## Stage 8B1 wrap-up — q_nl_02 deep dive + reranker latency/reproducibility
+
+Two follow-ups requested before opening the Stage 8B1 PR, both
+investigation-only -- no retrieval/ranking code changed.
+
+### `q_nl_02` deep dive: exactly where does it fail?
+
+The ablation's headline table only reports "found in final `output_k=10`
+or not" -- not precise enough to say *why* `hybrid_reranked` still
+misses it. Traced the single required chunk
+(`chunk_a93f778ef1d8b5aa`, "`BaseModel.construct()` was replaced by
+`BaseModel.model_construct()` in v2.0.0.") through every stage for the
+query "What's the new way to build a model instance while skipping
+validation?":
+
+| Stage | Target's rank |
+|---|---|
+| Dense-only `candidate_k=40` pool | 20 |
+| Sparse-only `candidate_k=40` pool | not found |
+| RRF 1:1 fused `candidate_k=40` pool | **34** |
+| After reranking that same 40-item pool | **11** |
+
+So it's not any single one of the three hypothesized failure modes
+cleanly -- it's a *sequence*: Dense alone ranks it a middling 20/40;
+fusion with Sparse (which never finds it at all) actively **hurts** it,
+dropping it to 34/40 -- the same dilution mechanism `q_nl_03` suffered
+from, confirmed here as not unique to that query. Reranking then
+recovers most of that lost ground, 34 -> 11, but lands **one rank short**
+of `output_k=10`. Not "reranker doesn't help" -- reranker cut the gap by
+23 positions and still wasn't quite enough. Distinguishes cleanly from
+`q_nl_03` (which fusion also dilutes, but reranking clears the bar
+completely, landing at rank 2): same failure mechanism, different
+distance from the finish line, which is exactly why one query resolved
+and the other didn't even though both look like "RANKING" failures on
+the surface.
+
+### Reranker latency and reproducibility
+
+**Reproducibility**: model `Qwen/Qwen3-Reranker-0.6B`, revision
+`e61197ed45024b0ed8a2d74b80b4d909f1255473` (HF Hub commit sha, pinned
+here for the record -- `reranker.py` itself loads by model name, not a
+pinned revision, so a future re-run could pick up a newer upload unless
+this is checked); `sentence-transformers` 5.6.1, `transformers` 5.14.1,
+`torch` 2.13.0+cpu; device `cpu` (no CUDA available in this
+environment); `CrossEncoder.predict`'s default `batch_size=32` (never
+overridden by `reranker.py`); `candidate_k=40` (Stage 8B0's fixed pool,
+unchanged); model `max_length=40960`.
+
+**Latency**: first measurement attempt was invalid and is recorded here
+only as a methodology note, not a result -- it used `time.perf_counter()`
+(wall clock) around a long unattended background run, and the session's
+own date rolled over mid-run, confirming the measurement window
+included a real system sleep/suspend that wall-clock timing can't
+distinguish from actual compute (`37271s` total, `887s` average, one
+query showing `29653s` -- physically impossible for this workload).
+Re-measured with `time.process_time()` (CPU time, which cannot advance
+while a process isn't scheduled, so it's immune to suspend) as well as
+a fresh wall-clock pass. CPU time came back *larger* than wall time
+(42007s vs 10088s total, ratio ~4.16) -- not a bug: `process_time()`
+sums CPU time across every thread, and this machine's torch/BLAS
+backend is evidently using ~4 threads per forward pass, so CPU time
+measures aggregate compute cost, not what a caller actually waits for.
+The wall-clock component of this second, uninterrupted run is what's
+reported as latency, cross-checked against the first (corrupted) run's
+minimum value -- 82.3s vs 79.6s, close enough to confirm the first run's
+extreme values were the suspend artifact, not this run's numbers:
+
+| Metric | Value |
+|---|---|
+| Model load (cold, from local HF cache) | 2.87s |
+| Rerank wall time per query (mean, 42 queries, up to 40 candidates each) | 240.2s |
+| Rerank wall time per query (min / max) | 82.3s / 324.7s |
+| Rerank wall time, all 42 queries | ~10,088s (~2.8 hours) |
+
+**Honest read**: ~4 minutes per query on CPU is not remotely
+production-viable as deployed here -- this is a research-ablation
+result establishing that reranking *can* improve ranking quality
+(confirmed above), not a claim that this specific model/hardware
+combination is deployable. A real deployment would need GPU inference,
+a smaller/distilled reranker, or both; recorded here as an explicit,
+quantified limitation rather than left implicit.
+
+**Files modified**: none (investigation-only; both scripts used for
+this section were run from a local scratch location, not checked into
+the repo, since they're one-off diagnostics over already-existing
+`retrieve_hybrid`/`rerank` APIs, not new reusable tooling).
