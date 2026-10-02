@@ -1,6 +1,8 @@
 # Software Version Migration Assistant
 
-A version-aware RAG system for identifying software breaking changes, linking evidence across documentation and code sources, and generating grounded migration guidance.
+A version-aware retrieval system for software breaking changes: it extracts change claims from release notes and migration guides, links evidence that describes the same change, and retrieves that evidence for migration questions.
+
+> **Status:** the extraction, evidence-aggregation, retrieval, and reranking layers are implemented and benchmarked. Grounded migration-guidance generation and code-level sources (PRs, diffs, source parsing) are planned, not yet implemented.
 
 The project is being redesigned from a general-purpose RAG prototype into a software migration assistant focused on a specific challenge:
 
@@ -92,9 +94,9 @@ ChangeRecord
     └── EvidenceLink[]
 ```
 
-The current implementation covers Level 1 extraction, entity resolution / evidence aggregation, and a Retrieval v1 baseline (dense + sparse + hybrid + version filtering), benchmarked end to end against a real pydantic 1.10.x → 2.x migration corpus. See [Benchmark Results](#benchmark-results-stage-7-baseline-stage-8a-gold-set-remediation) below.
+The current implementation covers Level 1 extraction, entity resolution / evidence aggregation, a Retrieval v1 baseline (dense + sparse + hybrid + version filtering), and a Stage 8B1 cross-encoder reranker (Qwen3-Reranker-0.6B), benchmarked end to end against a real pydantic 1.10.x → 2.x migration corpus. See [Benchmark Results](#benchmark-results-stage-7-baseline-stage-8a-gold-set-remediation-stage-8b1-reranking) below.
 
-Reranking, Late Chunking, query decomposition, and LLM-based extraction fallback are the next candidates, prioritized by what the benchmark's failure analysis actually shows is worth adding (see that section).
+Late Chunking, query decomposition, and an LLM-based extraction fallback are the next candidates, prioritized by what the benchmark's failure analysis actually shows is worth adding (see that section).
 
 ---
 
@@ -296,15 +298,15 @@ Level 1 extraction (`src/extraction/`) is implemented and deterministic-first: r
 
 # Testing
 
-The project currently includes **150 passing tests** across entity models, candidate blocking, hard cannot-link constraints, pairwise scoring, precision-first linking, Level 1 extraction (including deliberately adversarial "don't over-extract" cases), source-aware chunking, dense/sparse/hybrid retrieval, version-interval filtering (including version precision), and the evaluation harness. 10 of these were added across Stage 8A/8A.1 specifically to lock in the fixes made during gold-set remediation (`ChangeType.BEHAVIOR_CHANGED` isn't special-cased anywhere in aggregation, version precision is derived not manufactured, `migration_action_text` extraction and threading through the linker).
+The project currently includes **190 passing tests** (`pytest -q`) across entity models, candidate blocking, hard cannot-link constraints, pairwise scoring, precision-first linking, Level 1 extraction (including deliberately adversarial "don't over-extract" cases), source-aware chunking, dense/sparse/hybrid retrieval, reranking, version-interval filtering (including version precision), and the evaluation harness. 10 of these were added across Stage 8A/8A.1 specifically to lock in the fixes made during gold-set remediation (`ChangeType.BEHAVIOR_CHANGED` isn't special-cased anywhere in aggregation, version precision is derived not manufactured, `migration_action_text` extraction and threading through the linker).
 
 Several tests intentionally focus on difficult negative cases: evidence that shares a symbol or similar language but should **not** be merged (Level 2), and statements that merely mention a symbol without describing a change (Level 1).
 
-There are also five pre-existing failures in legacy `retriever.py`/`vector_store.py` tests caused by historical interface mismatches, predating this work. They're intentionally being left alone: those two modules are expected to be replaced by a Hybrid Retrieval / Qdrant layer, so realigning tests to an interface likely to be rewritten has low value. They'll be revisited in their own commit once that layer's fate is decided.
+A few early-prototype modules (`src/vector_store.py`, `src/prompt_builder.py`, `src/document_loader.py`, `src/chunker.py`) remain in the tree; they are not used by the benchmark pipeline and are candidates for removal.
 
 ---
 
-# Benchmark Results (Stage 7 baseline, Stage 8A/8A.1/8A.2 gold-set remediation)
+# Benchmark Results (Stage 7 baseline, Stage 8A gold-set remediation, Stage 8B1 reranking)
 
 A deterministic baseline was frozen (chunking → dense/sparse/hybrid → Recall@K/MRR/nDCG) and benchmarked *before* considering an LLM extraction fallback, reranker, or Late Chunking -- adding any of those first would make it impossible to tell whether a later improvement came from retrieval or from more/better-extracted evidence.
 
@@ -317,6 +319,8 @@ A deterministic baseline was frozen (chunking → dense/sparse/hybrid → Recall
 Tagged `pydantic-gold-v1`. Going forward, Stage 8B does not modify this gold set to make retrieval scores look better -- reopening it requires a real factual/completeness/taxonomy error, and becomes a new revision (v1.1/v2), never a silent edit to v1. See `docs/entity-aggregation-log.md` "Gold Set v1 FROZEN".
 
 **Corpus**: pydantic 1.10.x → 2.x only (no internal 2.x churn), grounded in the real [official migration guide](https://docs.pydantic.dev/latest/migration/) -- original short-form notes, not copied verbatim, covering BaseModel method renames, config renames, field/validator changes, generics/dataclass changes, moved/dependency-split symbols, and behavior changes, plus a "Stable in v2" section of facts that *didn't* change (for negative-query grounding). Run through the actual Level 1 → Level 2 pipeline (no hand-invented ids): 3 source documents → 76 chunks → 34 extracted `UnresolvedChange` claims → 27 resolved `ChangeRecord`s (7 deduplicated across independent migration-guide/release-note evidence via real pairwise resolution, 0 cannot-link vetoes needed). Every `DEPRECATED`/`MOVED`/`REMOVED` fact was audited for a real recommended action (`replacement_symbol` or, when it isn't a clean symbol swap, a free-text `migration_action_text` -- e.g. "use dicts instead"): 14 of 15 carry one; the 1 that doesn't (`stricturl`) is intentional -- no 1:1 replacement is verifiable from the official source, and the gold query was worded accordingly rather than implying one exists. `replacement_symbol` names what to call, not necessarily the complete diff (e.g. `from_orm`'s full action also needs a `model_config` change stated in its evidence text) -- see the semantics note in `data/gold/deprecated_action_audit.md`.
+
+**Models**: dense retrieval uses `all-MiniLM-L6-v2`; sparse retrieval uses BM25; Stage 8B1 reranking uses `Qwen/Qwen3-Reranker-0.6B` at a pinned revision (`src/retrieval/reranker.py`).
 
 **Gold set**: 48 queries (`data/gold/pydantic_gold_queries.json`) across 10 taxonomy buckets (exact_symbol, natural_language paraphrase, single_change, multi_change, config_change, dependency_change, behavioral_change, negative, underspecified_symbol, legacy_symbol), each carrying real `required_change_ids`, `relevant_evidence_ids`, and (for negatives) `stability_evidence_ids` resolved from the pipeline output above, not placeholders. `config_change` (3) and `behavioral_change` (3) are short of the target 5 -- see Known Limitations below, not padded to hit a number. Three `evaluation_scope` values, only one of which feeds the core aggregate:
 
@@ -354,7 +358,20 @@ Dense leads on every metric here (post remediation); Hybrid stays close behind o
 
 Reciprocal Rank Fusion sums *rank-based* scores across retrievers; it does not just take the best rank a document achieved in either list. A chunk BM25 never retrieves at all contributes zero credit from that side, so a chunk dense ranks very highly (even #1) can still be out-accumulated by chunks that both retrievers rank only moderately well. Confirmed directly on this corpus: `q_nl_03` ("How do I validate a plain dict into a model object now?") -- dense finds `BaseModel.parse_obj` at rank 4 (a clean top-5 hit on its own), BM25 never finds it at all, and the *real* RRF fusion pool the benchmark actually uses (top_k=10 → a 40-candidate fused pool, reconstructed exactly, not approximated) ranks it 13th -- outside top-10. Recall@5 for this single query: Dense 1.0, Hybrid 0.0.
 
-This is a real property of RRF, not a bug, and it's the reason Hybrid's aggregate Recall@5 sits below Dense's in this run. It's also a concrete, examined argument for why a reranker (Stage 8B candidate) sits over the *union* of dense+sparse candidates rather than assuming a fused ranking is always at least as good as its best input.
+This is a real property of RRF, not a bug, and it's the reason Hybrid's aggregate Recall@5 sits below Dense's in this run. It's also a concrete, examined argument for why a reranker sits over the *union* of dense+sparse candidates rather than assuming a fused ranking is always at least as good as its best input -- tested directly in Stage 8B1 below.
+
+## Stage 8B1: ranking ablation and reranking
+
+A controlled ablation on the same frozen 42-query `change_retrieval` core, with every mode drawing from the same candidate_k=40 pool (`scripts/run_ranking_ablation.py`; results in `data/benchmark/ranking_ablation_*.csv`). Gold Set v1, the embedding model, chunking, the corpus, and version-filter semantics are unchanged.
+
+| Mode | Recall@5 | MRR | nDCG@5 |
+|---|---|---|---|
+| RRF 1:1 (baseline hybrid) | 0.952 | 0.875 | 0.895 |
+| RRF dense 2 : sparse 1 | 0.952 | 0.887 | 0.902 |
+| RRF dense 1 : sparse 2 | 0.905 | 0.889 | 0.893 |
+| **Hybrid + Qwen3-Reranker-0.6B** | **0.976** | **0.964** | **0.967** |
+
+Reweighting RRF does not recover the RANKING-classified failures; post-fusion cross-encoder reranking does. Reranking the full 40-candidate pool fixes `q_nl_03` (dense rank 4, RRF rank 13 → top 5). `q_nl_02` still fails: its required chunk is in the pool (fused rank 34), but the reranker does not score it into the top 5. The reranker model revision is pinned so re-runs cannot silently pick up a newer upload.
 
 ## Failure analysis (re-run post Stage 8A.2 remediation)
 
@@ -365,7 +382,7 @@ Reading `data/benchmark/per_query_results.csv` (the authoritative source, `chang
 | `q_nl_02` | `BaseModel.construct` | 20 (top 20, not top 10) | not found (top 50) | 34 (of 40) | **RANKING** |
 | `q_nl_03` | `BaseModel.parse_obj` | 4 (top 5) | not found (top 50) | 13 (of 40) | **RANKING** |
 
-- **RANKING** (both): the fact is correctly extracted, indexed, and findable by at least one retriever within a reasonable window -- `q_nl_03` even lands a clean dense top-5 on its own. Not SEMANTIC_MISMATCH (that would mean absent even from a wide net). → reranker candidate, not addressed in Stage 8A per scope.
+- **RANKING** (both): the fact is correctly extracted, indexed, and findable by at least one retriever within a reasonable window -- `q_nl_03` even lands a clean dense top-5 on its own. Not SEMANTIC_MISMATCH (that would mean absent even from a wide net). → reranker candidate, not addressed in Stage 8A per scope. Stage 8B1 reranking resolves `q_nl_03`; `q_nl_02` still fails (see Stage 8B1 above).
 - No **CORPUS_GAP**, **EXTRACTION_GAP**, **LABEL_ERROR**, or **VERSION_FILTER_ERROR** found: both facts are demonstrably present and extracted (dense finds both in the top 20), the gold labels were re-verified three times during remediation, and `hybrid_version_filtered`'s numbers track `hybrid` closely throughout (no distortion traceable to the filter).
 
 **`q_amb_01` (`evaluation_scope: "query_planner"`, excluded from the core table above)**: all four retrieval modes score 0.000 -- Dense's best of its 3 required changes only reaches rank 23-25 of 76 chunks. Classified **UNDERSPECIFIED_SYMBOL**, not RANKING: the query is a single four-letter bare term ("`parse`") genuinely matching multiple real symbols (`parse_obj`/`parse_raw`/`parse_file`, plus a non-required look-alike `parse_obj_as`), diluting relevance across all of them rather than pointing at one. → symbol/context-expansion candidate (a future query-understanding benchmark), not a retrieval-quality problem and not addressed in Stage 8A per scope.
@@ -423,7 +440,7 @@ Retrieval work status:
 * [x] version-aware filtering
 * [ ] Late Chunking experiments for documentation (ablation target against the v1 chunking baseline)
 * [ ] Tree-sitter parsing for source code
-* [ ] reranking
+* [x] cross-encoder reranking (Stage 8B1)
 * [ ] true version-path multi-hop migration queries (v2→v3→v4→v5 chains; `multi_change` benchmarks multiple co-occurring changes within one transition today, which is different -- see Benchmark Results)
 * [ ] adaptive evidence retrieval
 
@@ -449,7 +466,7 @@ False Merge Rate and False Split Rate will be tracked separately because their d
 
 ## Retrieval
 
-* [x] Recall@K, MRR, nDCG -- implemented and run for real (see [Benchmark Results](#benchmark-results-stage-7-baseline-stage-8a-gold-set-remediation))
+* [x] Recall@K, MRR, nDCG -- implemented and run for real (see [Benchmark Results](#benchmark-results-stage-7-baseline-stage-8a-gold-set-remediation-stage-8b1-reranking))
 * [ ] Migration Chain Recall -- the evaluation harness's metric functions are already item-id-agnostic and `required_change_ids` is already the right shape for this; it's a new metric function over the same resolved id lists, not a re-annotation of the gold set
 * [ ] affected-symbol coverage
 
@@ -496,10 +513,10 @@ Later experiments will test whether generated migration recommendations can be a
 * [x] Dense vs. sparse vs. hybrid vs. hybrid+version-filter benchmark, per-query-type slicing, failure analysis
 * [x] Stage 8A/8A.1/8A.2: gold-set factual/completeness/taxonomy/scope/wording remediation across three human review rounds (4 factual fixes, 3 deprecated-only→actionable fixes, taxonomy renamed and split, `BEHAVIOR_CHANGED` applied + downstream-impact audited, minimal version-precision representation, stability evidence for negative queries, `evaluation_scope` 3-way split) -- see `docs/entity-aggregation-log.md`
 * [x] **Gold Set v1 frozen** (tag `pydantic-gold-v1`, `status: "human-reviewed / frozen"`, `source_commit: 33163fd`) -- reopening requires a real factual/completeness/taxonomy error, never a score-motivated edit; becomes v1.1/v2 if it happens
+* [x] Stage 8B1: RRF weighting ablation + post-fusion cross-encoder reranking (Qwen3-Reranker-0.6B, pinned revision)
 
 ### In Progress / Next
 
-* [ ] Reranker (candidate: fixes RANKING-classified failures where the right chunk is indexed but scores too low, e.g. `q_nl_02`/`q_nl_03`, and the concrete finding that RRF hybrid doesn't strictly dominate dense)
 * [ ] Query/symbol context expansion (candidate: fixes UNDERSPECIFIED_SYMBOL failures like `q_amb_01`)
 * [ ] LLM-based extraction fallback (interface already exists in `llm_fallback.py`; not wired to a live model -- benchmark above is what will justify whether/where it's worth it)
 * [ ] Migration Chain Recall metric
@@ -510,7 +527,6 @@ Later experiments will test whether generated migration recommendations can be a
 
 * [ ] Late Chunking benchmark (ablate against the chunking baseline above)
 * [ ] Tree-sitter code parsing
-* [ ] Reranking
 * [ ] Migration-path query decomposition
 * [ ] Adaptive retrieval
 * [ ] Evidence coverage/conflict detection
